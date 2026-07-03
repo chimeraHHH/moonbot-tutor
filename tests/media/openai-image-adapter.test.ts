@@ -86,11 +86,17 @@ describe('openai-image-adapter', () => {
   });
 
   it('reports connectivity failures for missing models', async () => {
+    // Single-model lookup 404s, then the adapter falls back to listing all
+    // models; return a list that does not include the target model.
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 404,
       text: async () => 'not found',
       statusText: 'Not Found',
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [] }),
     });
 
     const result = await testOpenAIImageConnectivity({

@@ -6,6 +6,9 @@ node_modules/
 packages/pptxgenjs/
 packages/mathml2omml/
 
+# Co-located Deep Solve backend (Python service; its JSON data is not app-formatted)
+services/code2video/
+
 # @openmaic workspace packages: the source is formatted to the root style, but skip
 # generated build output and the vendored legacy reference under the importer.
 packages/@openmaic/*/dist/

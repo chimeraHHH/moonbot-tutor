@@ -140,9 +140,7 @@ export async function pollDeepSolveTask(
   }
 
   if (data.state === 'failed' || data.state === 'cancelled') {
-    throw new Error(
-      `Deep Solve task ${data.state}: ${data.error?.message || 'no error detail'}`,
-    );
+    throw new Error(`Deep Solve task ${data.state}: ${data.error?.message || 'no error detail'}`);
   }
 
   // queued or running

@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
-import {
-  submitDeepSolveTask,
-  pollDeepSolveTask,
-} from '@/lib/media/adapters/deep-solve-adapter';
+import { submitDeepSolveTask, pollDeepSolveTask } from '@/lib/media/adapters/deep-solve-adapter';
 import type { VideoGenerationConfig, VideoGenerationOptions } from '@/lib/media/types';
 
 const config: VideoGenerationConfig = {
