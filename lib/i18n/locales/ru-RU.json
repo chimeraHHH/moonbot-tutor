@@ -1498,6 +1498,7 @@
     "providerMiniMaxVideo": "MiniMax Video",
     "providerGrokVideo": "Grok Video (xAI)",
     "providerHappyHorse": "HappyHorse (Alibaba Cloud)",
+    "providerDeepSolve": "Deep Solve (Code2Video / Manim)",
     "testVideoGeneration": "Тест генерации видео",
     "testVideoConnectivity": "Тест подключения",
     "videoConnectivitySuccess": "Подключение к видеосервису успешно",
