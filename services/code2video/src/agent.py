@@ -392,21 +392,18 @@ class TeachingVideoAgent:
                 scene_name = f"{section_id.title().replace('_', '')}Scene"
                 code_file = f"{section_id}.py"
 
-                # Convert Windows path to WSL path
-                wsl_output_dir = str(self.output_dir).replace('\\', '/').replace('C:', '/mnt/c')
-
-                # Run manim through WSL with proper encoding handling and full path
-                cmd = [
-                    "wsl",
-                    "-d",
-                    "Ubuntu",
-                    "--",
-                    "bash",
-                    "-c",
-                    f"cd '{wsl_output_dir}' && /home/erica/.local/bin/manim {self.manim_quality_flag} {code_file} {scene_name} 2>&1",
-                ]
-
-                result = subprocess.run(cmd, capture_output=True, timeout=180, encoding='utf-8', errors='replace')
+                # Render with manim. Windows shells out to WSL (original behavior);
+                # macOS/Linux run the manim CLI directly from the output dir.
+                if os.name == "nt":
+                    wsl_output_dir = str(self.output_dir).replace('\\', '/').replace('C:', '/mnt/c')
+                    cmd = [
+                        "wsl", "-d", "Ubuntu", "--", "bash", "-c",
+                        f"cd '{wsl_output_dir}' && manim {self.manim_quality_flag} {code_file} {scene_name} 2>&1",
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, timeout=180, encoding='utf-8', errors='replace')
+                else:
+                    cmd = ["manim", self.manim_quality_flag, code_file, scene_name]
+                    result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, timeout=180, encoding='utf-8', errors='replace')
 
                 if result.returncode == 0:
                     video_patterns = [
@@ -750,21 +747,15 @@ class TeachingVideoAgent:
                 relative_path_str = str(relative_path).replace('\\', '/')
                 f.write(f"file '{relative_path_str}'\n")
 
-        # ffmpeg - run through WSL
+        # ffmpeg concat merge. Windows via WSL (original); macOS/Linux run directly.
         try:
-            # Convert Windows paths to WSL paths
-            wsl_output_dir = str(self.output_dir).replace('\\', '/').replace('C:', '/mnt/c')
-            wsl_video_list = f"{wsl_output_dir}/video_list.txt"
-            wsl_output_path = f"{wsl_output_dir}/{output_filename}"
-
-            cmd = ["wsl", "-d", "Ubuntu", "--", "bash", "-c", f"cd '{wsl_output_dir}' && ffmpeg -y -f concat -safe 0 -i video_list.txt -c copy '{output_filename}' 2>&1"]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                encoding='utf-8',
-                errors='replace',
-            )
+            if os.name == "nt":
+                wsl_output_dir = str(self.output_dir).replace('\\', '/').replace('C:', '/mnt/c')
+                cmd = ["wsl", "-d", "Ubuntu", "--", "bash", "-c", f"cd '{wsl_output_dir}' && ffmpeg -y -f concat -safe 0 -i video_list.txt -c copy '{output_filename}' 2>&1"]
+                result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
+            else:
+                cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "video_list.txt", "-c", "copy", output_filename]
+                result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, encoding='utf-8', errors='replace')
 
             if result.returncode == 0:
                 return str(output_path)
