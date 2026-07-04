@@ -56,7 +56,7 @@ def _apply_default_runtime(rt: "RuntimeConfig") -> None:
     rt.provider = rt.provider or os.getenv("C2V_LLM_PROVIDER") or "claude"
     rt.api_key = rt.api_key or os.getenv("C2V_LLM_API_KEY") or None
     rt.base_url = rt.base_url or os.getenv("C2V_LLM_BASE_URL") or f"http://localhost:{PORT}/shim/v1"
-    rt.model = rt.model or os.getenv("C2V_LLM_MODEL") or "claude-haiku-4-5-20251001"
+    rt.model = rt.model or os.getenv("C2V_LLM_MODEL") or "claude-sonnet-5"
     if not rt.api_type or rt.api_type == "auto":
         rt.api_type = "openai_compatible"
 
@@ -882,7 +882,7 @@ async def shim_chat(request: Request) -> JSONResponse:
         msgs = [{"role": "user", "content": " ".join(system_parts) or "Hello"}]
 
     up: Dict[str, Any] = {
-        "model": body.get("model", "claude-haiku-4-5-20251001"),
+        "model": body.get("model", "claude-sonnet-5"),
         "max_tokens": min(int(body.get("max_tokens") or 4096), 8192),
         "messages": msgs,
     }
@@ -919,7 +919,7 @@ async def shim_chat(request: Request) -> JSONResponse:
 
 @app.get("/shim/v1/models")
 def shim_models() -> JSONResponse:
-    return JSONResponse({"data": [{"id": "claude-haiku-4-5-20251001", "object": "model"}]})
+    return JSONResponse({"data": [{"id": "claude-sonnet-5", "object": "model"}]})
 
 
 @app.get("/")
