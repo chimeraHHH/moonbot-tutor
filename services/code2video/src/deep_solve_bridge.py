@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -13,6 +15,7 @@ from typing import Any, Dict, Literal, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
 
@@ -32,6 +35,30 @@ API_NAME_TO_SERVICE = {
     "gpt-o4mini": "gpto4mini",
     "Gemini": "gemini",
 }
+
+# Single-port backend: this process also serves the LLM shim and TTS, so the
+# whole deep-solve stack runs on one port.
+PORT = int(os.getenv("PORT", "8010"))
+# Optional OpenAI->Anthropic shim upstream (used when the LLM is Anthropic-native,
+# e.g. a Claude proxy). The pipeline points its OpenAI base_url at /shim/v1.
+SHIM_UPSTREAM = os.getenv("C2V_SHIM_UPSTREAM", "https://byteswarm.ai/claude/v1/messages")
+SHIM_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126 Safari/537.36"
+)
+TTS_STATIC_DIR = Path(__file__).resolve().parent / "tts_static"
+
+
+def _apply_default_runtime(rt: "RuntimeConfig") -> None:
+    """Fill the LLM runtime from C2V_LLM_* env when a caller (e.g. OpenMAIC's
+    adapter) sends no runtime, so a bare task still resolves an LLM. Defaults the
+    base URL to this process's own /shim/v1."""
+    rt.provider = rt.provider or os.getenv("C2V_LLM_PROVIDER") or "claude"
+    rt.api_key = rt.api_key or os.getenv("C2V_LLM_API_KEY") or None
+    rt.base_url = rt.base_url or os.getenv("C2V_LLM_BASE_URL") or f"http://localhost:{PORT}/shim/v1"
+    rt.model = rt.model or os.getenv("C2V_LLM_MODEL") or "claude-haiku-4-5-20251001"
+    if not rt.api_type or rt.api_type == "auto":
+        rt.api_type = "openai_compatible"
 
 
 def utc_now_iso() -> str:
@@ -225,6 +252,9 @@ class DeepSolveTaskManager:
     async def create_task(self, req: CreateTaskRequest, base_url: str) -> CreateTaskResponse:
         if not req.input.question.strip():
             raise HTTPException(status_code=400, detail="input.question cannot be empty")
+
+        # Callers that omit LLM runtime (OpenMAIC's adapter) get the env defaults.
+        _apply_default_runtime(req.runtime)
 
         task_id = f"dsv_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
         created_at = utc_now_iso()
@@ -776,6 +806,122 @@ app.add_middleware(
 )
 
 
+# --- Folded-in TTS (edge-tts) ------------------------------------------------
+TTS_STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(TTS_STATIC_DIR)), name="static")
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    rate: str = "+0%"
+
+
+@app.post("/tts")
+async def generate_tts(request: TTSRequest) -> JSONResponse:
+    if not request.text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    import edge_tts  # lazy: keep TTS an optional dependency
+    from mutagen.mp3 import MP3
+    from text_utils import preprocess_tts_text
+
+    filepath = TTS_STATIC_DIR / f"{uuid.uuid4()}.mp3"
+    try:
+        communicate = edge_tts.Communicate(
+            preprocess_tts_text(request.text), request.voice, rate=request.rate
+        )
+        await communicate.save(str(filepath))
+        duration = MP3(str(filepath)).info.length
+        return JSONResponse(
+            {"audio_url": f"/static/{filepath.name}", "duration": duration, "filename": filepath.name}
+        )
+    except Exception as e:
+        if filepath.exists():
+            try:
+                filepath.unlink()
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Folded-in OpenAI->Anthropic shim ----------------------------------------
+def _call_anthropic(payload: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+    req = urllib.request.Request(
+        SHIM_UPSTREAM,
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "User-Agent": SHIM_UA,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.load(resp)
+
+
+@app.post("/shim/v1/chat/completions")
+@app.post("/shim/chat/completions")
+async def shim_chat(request: Request) -> JSONResponse:
+    body = await request.json()
+    auth = request.headers.get("authorization", "")
+    key = auth.split(" ", 1)[-1].strip() if auth else ""
+
+    system_parts: list[str] = []
+    msgs: list[Dict[str, str]] = []
+    for m in body.get("messages", []):
+        role, content = m.get("role"), m.get("content", "")
+        if isinstance(content, list):
+            content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+        if role == "system":
+            system_parts.append(content)
+        else:
+            msgs.append({"role": "assistant" if role == "assistant" else "user", "content": content})
+    if not msgs:
+        msgs = [{"role": "user", "content": " ".join(system_parts) or "Hello"}]
+
+    up: Dict[str, Any] = {
+        "model": body.get("model", "claude-haiku-4-5-20251001"),
+        "max_tokens": min(int(body.get("max_tokens") or 4096), 8192),
+        "messages": msgs,
+    }
+    if system_parts:
+        up["system"] = "\n\n".join(system_parts)
+    if body.get("temperature") is not None:
+        up["temperature"] = body["temperature"]
+
+    try:
+        resp = await asyncio.to_thread(_call_anthropic, up, key)
+    except urllib.error.HTTPError as e:
+        return JSONResponse(
+            {"error": {"message": e.read().decode()[:500], "code": e.code}}, status_code=e.code
+        )
+
+    text = "".join(b.get("text", "") for b in resp.get("content", []) if b.get("type") == "text")
+    usage = resp.get("usage", {})
+    return JSONResponse(
+        {
+            "id": resp.get("id", "chatcmpl-shim"),
+            "object": "chat.completion",
+            "model": body.get("model", ""),
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}
+            ],
+            "usage": {
+                "prompt_tokens": usage.get("input_tokens", 0),
+                "completion_tokens": usage.get("output_tokens", 0),
+                "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            },
+        }
+    )
+
+
+@app.get("/shim/v1/models")
+def shim_models() -> JSONResponse:
+    return JSONResponse({"data": [{"id": "claude-haiku-4-5-20251001", "object": "model"}]})
+
+
 @app.get("/")
 async def read_root() -> JSONResponse:
     return JSONResponse({"message": "Code2Video Deep Solve Bridge is running."})
@@ -851,4 +997,4 @@ async def validate_runtime_config(req: ConfigValidateRequest) -> ConfigValidateR
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8010)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)

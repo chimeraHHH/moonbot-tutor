@@ -111,6 +111,14 @@ decorator==5.2.1            # Decorator utilities
 packaging==25.0             # Version parsing and comparison
 
 # ============================================================================
+# Backend Server (deep_solve_bridge) + folded-in TTS
+# ============================================================================
+fastapi                     # Deep-solve bridge API (also hosts LLM shim + TTS)
+uvicorn                     # ASGI server
+edge-tts                    # Text-to-speech (folded into the bridge)
+mutagen                     # MP3 duration probing for TTS
+
+# ============================================================================
 # REMOVED DEPENDENCIES
 # ============================================================================
 # The following dependencies have been removed as they are not used:

@@ -2,7 +2,10 @@ import requests
 import os
 from pathlib import Path
 
-TTS_API_URL = "http://localhost:54321/tts"
+# TTS is served by the deep-solve bridge itself (folded in). Override with
+# C2V_TTS_URL if the TTS endpoint lives elsewhere.
+TTS_BASE_URL = os.getenv("C2V_TTS_URL", "http://localhost:8010").rstrip("/")
+TTS_API_URL = f"{TTS_BASE_URL}/tts"
 
 def generate_tts_audio(text: str, output_path: str | Path, voice: str = "zh-CN-XiaoxiaoNeural", rate: str = "+0%") -> float:
     """
@@ -26,7 +29,7 @@ def generate_tts_audio(text: str, output_path: str | Path, voice: str = "zh-CN-X
         # The TTS service returns a relative URL. We need to construct the full URL to download it,
         # OR since it's running locally, we might be able to find the file directly if we knew where TTS service is running.
         # But for robustness, let's download it via HTTP.
-        download_url = f"http://localhost:54321{audio_url}"
+        download_url = f"{TTS_BASE_URL}{audio_url}"
         
         audio_response = requests.get(download_url)
         audio_response.raise_for_status()
