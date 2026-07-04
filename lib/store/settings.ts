@@ -479,6 +479,7 @@ const getDefaultVideoConfig = () => ({
     'minimax-video': { apiKey: '', baseUrl: '', enabled: false },
     'grok-video': { apiKey: '', baseUrl: '', enabled: false },
     happyhorse: { apiKey: '', baseUrl: '', enabled: false },
+    'deep-solve': { apiKey: '', baseUrl: '', enabled: false },
   } as Record<VideoProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
 
