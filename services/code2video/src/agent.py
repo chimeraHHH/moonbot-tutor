@@ -106,6 +106,14 @@ class TeachingVideoAgent:
         self.output_dir = get_output_dir(idx=idx, knowledge_point=self.learning_topic, base_dir=folder)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Make the voiceover base class importable from the output dir (manim
+        # render and the dry-run both run with cwd=output_dir), so generated
+        # sections can `from teaching_scene import TeachingScene`.
+        import shutil
+        _ts_src = Path(__file__).resolve().parent / "teaching_scene.py"
+        if _ts_src.exists():
+            shutil.copy(_ts_src, self.output_dir / "teaching_scene.py")
+
         # Prefer repository root (../) as the resource root in this repo layout.
         # Fallback to the historical "<base>/CASES/..." derivation if needed.
         repo_root = Path(__file__).resolve().parent.parent
@@ -403,7 +411,10 @@ class TeachingVideoAgent:
                     result = subprocess.run(cmd, capture_output=True, timeout=180, encoding='utf-8', errors='replace')
                 else:
                     cmd = ["manim", self.manim_quality_flag, code_file, scene_name]
-                    result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, timeout=180, encoding='utf-8', errors='replace')
+                    # Put src/ on PYTHONPATH so section files can `from teaching_scene import TeachingScene`.
+                    src_dir = str(Path(__file__).resolve().parent)
+                    render_env = {**os.environ, "PYTHONPATH": src_dir + os.pathsep + os.environ.get("PYTHONPATH", "")}
+                    result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, timeout=180, encoding='utf-8', errors='replace', env=render_env)
 
                 if result.returncode == 0:
                     video_patterns = [
@@ -543,26 +554,10 @@ class TeachingVideoAgent:
         return False
 
     def generate_audio(self) -> None:
-        """Step 2.5: Generate TTS audio for each section"""
-        print("🗣️ Generating TTS audio for sections...")
-        audio_dir = self.output_dir / "media" / "audio"
-        audio_dir.mkdir(parents=True, exist_ok=True)
-        
-        for section in self.sections:
-            if not section.lecture_lines:
-                continue
-                
-            # Combine lines into one text for TTS
-            full_text = " ".join(section.lecture_lines)
-            audio_path = audio_dir / f"{section.id}.mp3"
-            
-            # Use forward slashes for cross-platform compatibility in Manim code
-            section.audio_path = str(audio_path.absolute()).replace("\\", "/")
-            
-            # Call TTS service
-            duration = generate_tts_audio(full_text, audio_path)
-            section.audio_duration = duration
-            print(f"   ✅ {section.id} audio generated: {duration:.2f}s")
+        """Step 2.5: No external TTS — narration is spoken by Manim's own
+        voiceover system inside each scene (manim-voiceover). This is kept as a
+        no-op so the pipeline's audio stage stays in place."""
+        print("🗣️ Narration handled by manim-voiceover (no external TTS stage).")
 
     def generate_codes(self) -> Dict[str, str]:
         if not self.sections:

@@ -115,8 +115,9 @@ packaging==25.0             # Version parsing and comparison
 # ============================================================================
 fastapi                     # Deep-solve bridge API (also hosts LLM shim + TTS)
 uvicorn                     # ASGI server
-edge-tts                    # Text-to-speech (folded into the bridge)
+edge-tts                    # Text-to-speech (folded bridge TTS + manim-voiceover backend)
 mutagen                     # MP3 duration probing for TTS
+manim-voiceover             # Manim's own TTS: narration synced inside scenes (needs system SoX)
 
 # ============================================================================
 # REMOVED DEPENDENCIES

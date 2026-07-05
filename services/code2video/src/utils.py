@@ -93,9 +93,9 @@ def replace_base_class(code: str, new_class_def: str) -> str:
     class_start = None
     class_end = None
 
-    # Find the start line of class TeachingScene(Scene):
+    # Find the start line of `class TeachingScene(<any base>):` (Scene or VoiceoverScene)
     for i, line in enumerate(lines):
-        if re.match(r"^\s*class\s+TeachingScene\s*\(Scene\)\s*:", line):
+        if re.match(r"^\s*class\s+TeachingScene\s*\([^)]*\)\s*:", line):
             class_start = i
             break
 

@@ -462,7 +462,8 @@ class ScopeRefineFixer:
             - Use only verified Manim CE v0.19.0 features
             - Implement basic animations that are guaranteed to work
             - Focus on functionality over complexity
-            - Follow best practices for Scene construction
+            - Keep the SAME class structure: subclass TeachingScene and keep every
+              `self.teach("<narration>", <animation>)` narration call (see requirement 6).
             """
 
         return (
@@ -476,6 +477,7 @@ class ScopeRefineFixer:
             3. Ensure the code is syntactically correct
             4. Test all variable names and method calls
             5. Use proper Manim CE v0.19.0 syntax
+            6. PRESERVE THE NARRATION STRUCTURE (Manim voiceover): keep `from teaching_scene import TeachingScene`; the scene class MUST subclass `TeachingScene` (NOT `Scene`); keep `self.setup_layout(...)`; keep EVERY `self.teach("<narration>", <animation>)` call (this is the TTS). NEVER change the base class to `Scene`, NEVER replace `self.teach(...)` with bare `self.play(...)`, and NEVER use `self.add_sound(...)`.
 
             **Code:**"""
         )
@@ -608,6 +610,7 @@ class ScopeRefineFixer:
         3. Make minimal necessary changes
         4. Ensure compatibility with Manim CE v0.19.0
         5. Output ONLY the fixed Python code block
+        6. PRESERVE every `self.teach("<narration>", <animation>)` call and the TeachingScene base — do NOT convert to a plain Scene, do NOT replace self.teach with bare self.play, and do NOT use self.add_sound(...).
 
         **Fixed Code:**
         """

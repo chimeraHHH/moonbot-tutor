@@ -3,87 +3,63 @@ import os
 
 def get_prompt3_code(regenerate_note, section, base_class):
     return f"""
-You are an expert Manim animator using Manim Community Edition v0.19.0. 
-Please generate a high-quality Manim class based on the following teaching script.
+You are an expert Manim Community Edition v0.19.0 animator. Generate a teaching
+animation whose narration is spoken by Manim's own voiceover system via the
+provided `self.teach(...)` helper. Do NOT use external audio files.
 {regenerate_note}
 
-1. Basic Requirements:
-- Use the provided TeachingScene base class without modification.
-- Each lecture line must have a matching color with its corresponding animation elements.
-- Apply ONLY color changes to lecture lines - no scaling, translation, or Transform animations.
+1. STRUCTURE (MANDATORY):
+- `from manim import *` then `{base_class}` then `class {section.id.title().replace('_', '')}Scene(TeachingScene):`.
+- First line of construct: `self.setup_layout("{section.title}")`.
 
-2. Visual Anchor System (MANDATORY):
-- Use 6x6 grid system (A1-F6) for precise positioning.
-- Pay attention to the positioning of elements to avoid occlusions (e.g., labels and formulas).
-- All labels must be positioned within 1 grid unit of their corresponding objects
-- Grid layout (right side only):
-```
-lecture |  A1  A2  A3  A4  A5  A6
-        |  B1  B2  B3  B4  B5  B6
-        |  C1  C2  C3  C4  C5  C6
-        |  D1  D2  D3  D4  D5  D6
-        |  E1  E2  E3  E4  E5  E6
-        |  F1  F2  F3  F4  F5  F6
-```
+2. NARRATION VIA self.teach (MANDATORY — this is the TTS):
+- `self.teach(text, *animations)` SPEAKS `text` while playing the animations, timed to the speech.
+- Produce ONE `self.teach(...)` call PER lecture line, using that line VERBATIM as the spoken text,
+  together with the animation(s) that illustrate it.
+- EVERY visual step that teaches something MUST go through `self.teach(...)`.
+- Do NOT call `self.voiceover(...)`, `self.set_speech_service(...)`, `self.add_sound(...)`,
+  or bare `self.play(...)` for teaching content. (Only `self.teach` narrates.)
 
-3. POSITIONING METHODS:
-- Point example: self.place_at_grid(obj, 'B2', scale_factor=0.8)
-- Area example: self.place_in_area(obj, 'A1', 'C3', scale_factor=0.7)
-- NEVER use .to_edge(), .move_to(), or manual positioning!
+3. POSITIONING (provided by TeachingScene):
+- `self.place_at_grid(obj, 'B2', scale_factor=0.8)` or `self.place_in_area(obj, 'A1', 'C3', 0.7)`.
+- NEVER use .to_edge(), .move_to(), or manual coordinates.
 
 4. TEACHING CONTENT:
 - Title: {section.title}
-- Lecture Lines: {section.lecture_lines}
+- Lecture Lines (each becomes ONE self.teach call, verbatim as its narration): {section.lecture_lines}
 - Animation Description: {'; '.join(section.animations)}
-- Audio Path: {section.audio_path}
-- Audio Duration: {section.audio_duration} seconds
 
-5. STRUCTURE FOR CODE:
-Use the following comment format to indicate which block corresponds to which line:
-```python
-# === Animation for Lecture Line 1 ===
-
-6. EXAMPLE STRUCTURE:
+5. EXAMPLE:
 ```python
 from manim import *
-
 {base_class}
 
 class {section.id.title().replace('_', '')}Scene(TeachingScene):
     def construct(self):
-        self.setup_layout("{section.title}", {section.lecture_lines})
-        
-        # Play audio at the beginning
-        if "{section.audio_path}":
-            self.add_sound("{section.audio_path}")
-        
-        # rest of animation code
-        # === Animation for Lecture Line 1 ===
-        ...
+        self.setup_layout("{section.title}")
 
-        # === Animation for Lecture Line 2 ===
-        ...
-        
-        # Ensure the video lasts at least as long as the audio
-        self.wait({section.audio_duration} - self.renderer.time if {section.audio_duration} > self.renderer.time else 1)
+        tri = Polygon([-1, -1, 0], [1, -1, 0], [1, 1, 0], color="#4DA6FF")
+        self.place_at_grid(tri, "C3")
+        self.teach("首先，我们画一个直角三角形。", Create(tri))
+
+        formula = MathTex("a^2 + b^2 = c^2").scale(0.9)
+        self.place_at_grid(formula, "B4")
+        self.teach("它的两条直角边平方和，等于斜边的平方。", Write(formula))
 ```
 
-7. MANDATORY CONSTRAINTS:
-- Audio: MUST include `self.add_sound("{section.audio_path}")` at the beginning of `construct` if audio path is provided.
-- Timing: The total duration of animations should match the audio duration ({section.audio_duration}s). Use `self.wait()` to adjust timing.
-- Colors: Use light, distinguishable hexadecimal colors.
-- Scaling: Maintain appropriate font sizes and object scales for readability.
-- Consistency: Do not apply any animation to the lecture lines except for color changes; The lecture lines and title's size and position must remain unchanged.
-- Assets: If provided, MUST use the elements in the Animation Description formatted as [Asset: XXX/XXX.png] (abstract path).
-- Simplicity: Avoid 3D functions, complex panels, or external dependencies except for filenames in Animation Description.
+6. CONSTRAINTS:
+- Colors: light, distinguishable hex colors; keep font sizes readable.
+- Keep it simple and robust: basic, well-tested Manim CE v0.19.0 objects/animations only.
+- Assets: if the Animation Description contains [Asset: XXX/XXX.png], you MUST use those files.
+- No 3D, no external dependencies other than asset filenames.
 """
 
 
 def get_regenerate_note(attempt, MAX_REGENERATE_TRIES):
-    return f"""    
+    return f"""
 **IMPORTANT NOTE:** This is attempt {attempt}/{MAX_REGENERATE_TRIES} to generate working code.
-The previous attempts failed to run correctly. Please:
+Previous attempts failed to run. Please:
 1. Use only basic, well-tested Manim functions
-2. Avoid complex animations that might cause errors
-3. Use simple, reliable Manim patterns
+2. Keep exactly one `self.teach("<lecture line>", <animation>)` per lecture line
+3. Keep the class subclassing TeachingScene; never fall back to a plain Scene
 """
