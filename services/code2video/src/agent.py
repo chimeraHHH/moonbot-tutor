@@ -67,8 +67,8 @@ class RunConfig:
     feedback_rounds: int = 2
     iconfinder_api_key: str = ""
     max_code_token_length: int = 10000
-    max_fix_bug_tries: int = 10
-    max_regenerate_tries: int = 10
+    max_fix_bug_tries: int = 4
+    max_regenerate_tries: int = 3
     max_feedback_gen_code_tries: int = 3
     max_mllm_fix_bugs_tries: int = 3
     manim_quality_flag: str = "-ql"
@@ -406,15 +406,17 @@ class TeachingVideoAgent:
                     wsl_output_dir = str(self.output_dir).replace('\\', '/').replace('C:', '/mnt/c')
                     cmd = [
                         "wsl", "-d", "Ubuntu", "--", "bash", "-c",
-                        f"cd '{wsl_output_dir}' && manim {self.manim_quality_flag} {code_file} {scene_name} 2>&1",
+                        f"cd '{wsl_output_dir}' && manim {self.manim_quality_flag} --disable_caching {code_file} {scene_name} 2>&1",
                     ]
-                    result = subprocess.run(cmd, capture_output=True, timeout=180, encoding='utf-8', errors='replace')
+                    result = subprocess.run(cmd, capture_output=True, timeout=90, encoding='utf-8', errors='replace')
                 else:
-                    cmd = ["manim", self.manim_quality_flag, code_file, scene_name]
+                    # --disable_caching: each fix attempt regenerates the whole file, so
+                    # the scene cache rarely hits — skip the per-render hashing overhead.
+                    cmd = ["manim", self.manim_quality_flag, "--disable_caching", code_file, scene_name]
                     # Put src/ on PYTHONPATH so section files can `from teaching_scene import TeachingScene`.
                     src_dir = str(Path(__file__).resolve().parent)
                     render_env = {**os.environ, "PYTHONPATH": src_dir + os.pathsep + os.environ.get("PYTHONPATH", "")}
-                    result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, timeout=180, encoding='utf-8', errors='replace', env=render_env)
+                    result = subprocess.run(cmd, cwd=str(self.output_dir), capture_output=True, timeout=90, encoding='utf-8', errors='replace', env=render_env)
 
                 if result.returncode == 0:
                     video_patterns = [

@@ -142,12 +142,12 @@ class RuntimeConfig(BaseModel):
 
 
 class PipelineOptions(BaseModel):
-    use_feedback: bool = True
+    use_feedback: bool = False
     use_assets: bool = True
-    max_render_workers: int = 2
+    max_render_workers: int = 4
     max_code_token_length: int = 10000
-    max_fix_bug_tries: int = 10
-    max_regenerate_tries: int = 10
+    max_fix_bug_tries: int = 4
+    max_regenerate_tries: int = 3
     max_feedback_gen_code_tries: int = 3
     max_mllm_fix_bugs_tries: int = 3
     feedback_rounds: int = 2
