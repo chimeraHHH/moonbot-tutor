@@ -339,35 +339,18 @@ class ScopeRefineFixer:
             return False, f"Compilation Error: {e}"
 
     def dry_run_test(self, code: str, section_id: str, output_dir: Path) -> Tuple[bool, Optional[str]]:
-        """Execute dry run test (do not render video)"""
-        test_file = output_dir / f"test_{section_id}.py"
+        """Fast validation gate: compile-check only.
 
-        # Create test version of code (add quick exit)
-        test_code = code.replace(
-            "def construct(self):",
-            "def construct(self):\n        # Dry run test - quick exit\n        self.wait(0.1)\n        return\n        # Original code below:",
-        )
-
+        The old version spawned `python -c "from test_… import Scene"`, which
+        re-imports manim + manim_voiceover (~3s) on every fix attempt. Import- and
+        runtime-level errors are already caught by the full manim render that
+        follows, so a pure syntax check here is enough and avoids that overhead.
+        """
         try:
-            with open(test_file, "w", encoding="utf-8") as f:
-                f.write(test_code)
-
-            scene_name = f"{section_id.title().replace('_', '')}Scene"
-            cmd = ["python", "-c", f"from test_{section_id} import {scene_name}; print({scene_name}.__name__)"]
-
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=output_dir, timeout=10)
-
-            test_file.unlink()  # Clean up test file
-
-            if result.returncode == 0:
-                return True, None
-            else:
-                return False, result.stderr
-
-        except Exception as e:
-            if test_file.exists():
-                test_file.unlink()
-            return False, str(e)
+            compile(code, f"{section_id}.py", "exec")
+            return True, None
+        except SyntaxError as e:
+            return False, f"SyntaxError: {e}"
 
     def _clean_code_format(self, code: str) -> Optional[str]:
         """Clean and format code"""
