@@ -83,10 +83,15 @@ class DoubaoTTSService(SpeechService):
 
     def __init__(self, key: str = DOUBAO_KEY, voice: str = VOICE, **kwargs: object) -> None:
         initialize_speech_service(self, kwargs)
-        app_id, _, access_key = key.partition(":")
-        self.app_id = app_id
-        self.access_key = access_key
+        self.key = key
         self.voice = voice
+
+    def _auth_headers(self) -> dict:
+        # New console: a single API Key (X-Api-Key). Old console: "appId:accessKey".
+        if ":" in self.key:
+            app_id, _, access_key = self.key.partition(":")
+            return {"X-Api-App-Id": app_id, "X-Api-Access-Key": access_key}
+        return {"X-Api-Key": self.key}
 
     def generate_from_text(self, text, cache_dir=None, path=None, **kwargs):
         if cache_dir is None:
@@ -132,9 +137,8 @@ class DoubaoTTSService(SpeechService):
             method="POST",
             headers={
                 "Content-Type": "application/json",
-                "X-Api-App-Id": self.app_id,
-                "X-Api-Access-Key": self.access_key,
                 "X-Api-Resource-Id": "seed-tts-2.0",
+                **self._auth_headers(),
             },
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -168,7 +172,7 @@ class DoubaoTTSService(SpeechService):
 
 def make_speech_service():
     """Pick the manim-voiceover speech backend: Doubao TTS 2.0 if configured, else edge-tts."""
-    if DOUBAO_KEY and ":" in DOUBAO_KEY:
+    if DOUBAO_KEY:
         return DoubaoTTSService()
     return EdgeTTSService()
 

@@ -852,14 +852,16 @@ async function generateDoubaoTTS(
   config: TTSModelConfig,
   text: string,
 ): Promise<TTSGenerationResult> {
-  const colonIdx = (config.apiKey || '').indexOf(':');
-  if (colonIdx <= 0) {
-    throw new Error(
-      'Doubao TTS requires API key in format "appId:accessKey". Get both from the Volcengine console.',
-    );
+  const key = config.apiKey || '';
+  if (!key) {
+    throw new Error('Doubao TTS requires an API key (X-Api-Key from the Volcengine console).');
   }
-  const appId = config.apiKey!.slice(0, colonIdx);
-  const accessKey = config.apiKey!.slice(colonIdx + 1);
+  // New console: a single API Key (X-Api-Key). Old console: "appId:accessKey".
+  const colonIdx = key.indexOf(':');
+  const authHeaders: Record<string, string> =
+    colonIdx > 0
+      ? { 'X-Api-App-Id': key.slice(0, colonIdx), 'X-Api-Access-Key': key.slice(colonIdx + 1) }
+      : { 'X-Api-Key': key };
 
   const baseUrl = config.baseUrl || TTS_PROVIDERS['doubao-tts'].defaultBaseUrl;
   const speechRate = Math.round(((config.speed || 1.0) - 1.0) * 100);
@@ -868,9 +870,8 @@ async function generateDoubaoTTS(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Api-App-Id': appId,
-      'X-Api-Access-Key': accessKey,
       'X-Api-Resource-Id': 'seed-tts-2.0',
+      ...authHeaders,
     },
     body: JSON.stringify({
       user: { uid: 'openmaic' },
