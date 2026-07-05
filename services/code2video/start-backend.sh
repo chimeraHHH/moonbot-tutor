@@ -28,6 +28,10 @@ export C2V_LLM_MODEL="${C2V_LLM_MODEL:-claude-sonnet-5}"
 export C2V_LLM_API_KEY="${C2V_LLM_API_KEY:-$ANTHROPIC_KEY}"
 export C2V_LLM_BASE_URL="${C2V_LLM_BASE_URL:-http://localhost:8010/shim/v1}"
 export C2V_TTS_URL="${C2V_TTS_URL:-http://localhost:8010}"
+# Manim voiceover narration → Doubao TTS 2.0 ("appId:accessKey"). Shared with
+# OpenMAIC's TTS_DOUBAO_API_KEY. Unset ⇒ the manim side falls back to edge-tts.
+export C2V_TTS_DOUBAO_KEY="${C2V_TTS_DOUBAO_KEY:-$(read_env TTS_DOUBAO_API_KEY)}"
+[ -n "$(read_env C2V_TTS_VOICE)" ] && export C2V_TTS_VOICE="$(read_env C2V_TTS_VOICE)"
 # The shim forwards to the Anthropic-native upstream (…/messages).
 if [ -n "$ANTHROPIC_BASE" ]; then
   export C2V_SHIM_UPSTREAM="${C2V_SHIM_UPSTREAM:-${ANTHROPIC_BASE%/}/messages}"

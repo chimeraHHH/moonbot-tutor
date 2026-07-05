@@ -1,13 +1,19 @@
 """Teaching scene base + narration, built on manim-voiceover (Manim's own TTS
 system). Narration is generated and synced *inside* the Manim scene via
-`self.voiceover(...)`, replacing the old external-TTS + `add_sound` approach.
+`self.voiceover(...)`.
 
-The speech backend is Microsoft edge-tts (wrapped as a manim-voiceover
-SpeechService) so the original high-quality Chinese voice is preserved.
-Override the voice with C2V_TTS_VOICE.
+Speech backend selection (via env):
+- Doubao TTS 2.0 (Volcengine seed-tts-2.0) when `C2V_TTS_DOUBAO_KEY` ("appId:accessKey")
+  is set — the project default.
+- Microsoft edge-tts otherwise.
+Override the voice with `C2V_TTS_VOICE`.
 """
 import asyncio
+import base64
+import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -22,8 +28,14 @@ from manim_voiceover.services.base import (
 
 import edge_tts
 
-VOICE = os.getenv("C2V_TTS_VOICE", "zh-CN-XiaoxiaoNeural")
 RATE = os.getenv("C2V_TTS_RATE", "+0%")
+DOUBAO_KEY = os.getenv("C2V_TTS_DOUBAO_KEY", "")  # "appId:accessKey"
+DOUBAO_URL = os.getenv(
+    "C2V_TTS_DOUBAO_URL", "https://openspeech.bytedance.com/api/v3/tts"
+).rstrip("/")
+# Default voice depends on the backend (edge uses zh-CN-*, Doubao uses *_bigtts).
+DEFAULT_VOICE = "zh_female_vv_uranus_bigtts" if DOUBAO_KEY else "zh-CN-XiaoxiaoNeural"
+VOICE = os.getenv("C2V_TTS_VOICE", DEFAULT_VOICE)
 
 
 class EdgeTTSService(SpeechService):
@@ -65,13 +77,110 @@ class EdgeTTSService(SpeechService):
         return {"input_text": text, "input_data": input_data, "original_audio": audio_path}
 
 
+class DoubaoTTSService(SpeechService):
+    """manim-voiceover speech service backed by Doubao TTS 2.0 (Volcengine
+    seed-tts-2.0). Key format: "appId:accessKey" via C2V_TTS_DOUBAO_KEY."""
+
+    def __init__(self, key: str = DOUBAO_KEY, voice: str = VOICE, **kwargs: object) -> None:
+        initialize_speech_service(self, kwargs)
+        app_id, _, access_key = key.partition(":")
+        self.app_id = app_id
+        self.access_key = access_key
+        self.voice = voice
+
+    def generate_from_text(self, text, cache_dir=None, path=None, **kwargs):
+        if cache_dir is None:
+            cache_dir = self.cache_dir
+        input_text = remove_bookmarks(text)
+        input_data = {"input_text": input_text, "service": "doubao-tts", "voice": self.voice}
+        cached = self.get_cached_result(input_data, cache_dir)
+        if cached is not None:
+            return cached
+        audio_path = (
+            path_to_string(path)
+            if path is not None
+            else self.get_audio_basename(input_data) + ".mp3"
+        )
+        out = Path(cache_dir) / audio_path
+        try:
+            out.write_bytes(self._synthesize(input_text))
+        except Exception as e:
+            # Keep narration working if Doubao is unavailable (e.g. the resource
+            # is not yet granted to the app): fall back to edge-tts.
+            print(f"[teaching_scene] Doubao TTS failed ({e}); falling back to edge-tts")
+
+            async def _save() -> None:
+                await edge_tts.Communicate(input_text, "zh-CN-XiaoxiaoNeural", rate=RATE).save(str(out))
+
+            asyncio.run(_save())
+        return {"input_text": text, "input_data": input_data, "original_audio": audio_path}
+
+    def _synthesize(self, text: str) -> bytes:
+        body = json.dumps(
+            {
+                "user": {"uid": "code2video"},
+                "req_params": {
+                    "text": text,
+                    "speaker": self.voice,
+                    "audio_params": {"format": "mp3", "sample_rate": 24000},
+                },
+            }
+        ).encode()
+        req = urllib.request.Request(
+            f"{DOUBAO_URL}/unidirectional",
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Api-App-Id": self.app_id,
+                "X-Api-Access-Key": self.access_key,
+                "X-Api-Resource-Id": "seed-tts-2.0",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode("utf-8")
+
+        # Doubao streams concatenated JSON objects (no delimiter); decode in sequence.
+        chunks = bytearray()
+        dec = json.JSONDecoder()
+        idx, n = 0, len(raw)
+        while idx < n:
+            while idx < n and raw[idx] in " \t\r\n":
+                idx += 1
+            if idx >= n:
+                break
+            obj, idx = dec.raw_decode(raw, idx)
+            header = obj.get("header") or {}
+            code = obj.get("code", header.get("code"))
+            data = obj.get("data")
+            if code == 0 and data:
+                chunks += base64.b64decode(data)
+            elif code == 20000000:
+                break
+            elif code not in (None, 0):
+                raise RuntimeError(
+                    f"Doubao TTS error code {code}: {obj.get('message') or header.get('message')}"
+                )
+        if not chunks:
+            raise RuntimeError("Doubao TTS: no audio data received")
+        return bytes(chunks)
+
+
+def make_speech_service():
+    """Pick the manim-voiceover speech backend: Doubao TTS 2.0 if configured, else edge-tts."""
+    if DOUBAO_KEY and ":" in DOUBAO_KEY:
+        return DoubaoTTSService()
+    return EdgeTTSService()
+
+
 class TeachingScene(VoiceoverScene):
     """Base class the generated section scenes subclass. Provides the layout +
-    grid helpers and wires up the edge-tts voiceover service."""
+    grid helpers and wires up the voiceover speech service (Doubao TTS 2.0 by
+    default, edge-tts fallback)."""
 
     def setup_layout(self, title_text, lecture_lines=None):
         # Voiceover TTS (Manim's own system) — call before any self.voiceover().
-        self.set_speech_service(EdgeTTSService())
+        self.set_speech_service(make_speech_service())
 
         self.camera.background_color = "#000000"
         self.title = Text(title_text, font_size=28, color=WHITE).to_edge(UP)
