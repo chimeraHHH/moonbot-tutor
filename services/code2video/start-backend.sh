@@ -25,6 +25,8 @@ ANTHROPIC_BASE="$(read_env ANTHROPIC_BASE_URL)"
 
 export C2V_LLM_PROVIDER="${C2V_LLM_PROVIDER:-claude}"
 export C2V_LLM_MODEL="${C2V_LLM_MODEL:-claude-sonnet-5}"
+# Fix/repair loop uses a faster model (code generation keeps C2V_LLM_MODEL).
+export C2V_FIX_MODEL="${C2V_FIX_MODEL:-claude-haiku-4-5-20251001}"
 export C2V_LLM_API_KEY="${C2V_LLM_API_KEY:-$ANTHROPIC_KEY}"
 export C2V_LLM_BASE_URL="${C2V_LLM_BASE_URL:-http://localhost:8010/shim/v1}"
 export C2V_TTS_URL="${C2V_TTS_URL:-http://localhost:8010}"

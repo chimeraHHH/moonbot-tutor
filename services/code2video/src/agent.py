@@ -126,7 +126,15 @@ class TeachingVideoAgent:
         self.assets_dir.mkdir(parents=True, exist_ok=True)
 
         """3. ScopeRefine & Anchor Visual"""
-        self.scope_refine_fixer = ScopeRefineFixer(self.API, self.max_code_token_length)
+        # Route the fix/repair calls through a faster model (C2V_FIX_MODEL, e.g. Haiku)
+        # while code generation keeps the main model — the fix loop dominates render time.
+        _fix_model = os.getenv("C2V_FIX_MODEL", "").strip()
+        if _fix_model and self.API in (request_claude, request_claude_token):
+            import functools
+            _fix_api = functools.partial(self.API, model=_fix_model)
+        else:
+            _fix_api = self.API
+        self.scope_refine_fixer = ScopeRefineFixer(_fix_api, self.max_code_token_length)
         self.extractor = GridPositionExtractor()
 
         """4. External Database"""

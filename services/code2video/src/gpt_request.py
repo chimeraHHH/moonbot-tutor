@@ -78,11 +78,11 @@ def generate_log_id():
     return f"tkb{int(time.time() * 1000)}"
 
 
-def request_claude(prompt, log_id=None, max_tokens=16384, max_retries=3):
+def request_claude(prompt, log_id=None, max_tokens=16384, max_retries=3, model=None):
     base_url = cfg("claude", "base_url")
     api_version = cfg("claude", "api_version")
     api_key = cfg("claude", "api_key")
-    model_name = cfg("claude", "model", "claude-4-opus")
+    model_name = model or cfg("claude", "model", "claude-4-opus")
     client = create_client("claude", base_url=base_url, api_key=api_key, api_version=api_version)
     messages = build_text_messages("claude", prompt, base_url, api_version)
 
@@ -116,11 +116,11 @@ def request_claude(prompt, log_id=None, max_tokens=16384, max_retries=3):
             time.sleep(delay)
 
 
-def request_claude_token(prompt, log_id=None, max_tokens=10000, max_retries=3):
+def request_claude_token(prompt, log_id=None, max_tokens=10000, max_retries=3, model=None):
     base_url = cfg("claude", "base_url")
     api_version = cfg("claude", "api_version")
     api_key = cfg("claude", "api_key")
-    model_name = cfg("claude", "model", "claude-4-opus")
+    model_name = model or cfg("claude", "model", "claude-4-opus")
     client = create_client("claude", base_url=base_url, api_key=api_key, api_version=api_version)
     messages = build_text_messages("claude", prompt, base_url, api_version)
 
