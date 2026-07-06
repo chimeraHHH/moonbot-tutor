@@ -10,7 +10,7 @@ requests==2.32.4            # HTTP requests for asset downloads
 numpy==2.2.6                # Numerical operations and statistics
 scipy==1.15.3               # Statistical tests (scipy.stats)
 psutil==7.0.0               # System resource monitoring
-python-dotenv==1.1.0        # Environment variable management
+python-dotenv==1.2.2        # Environment variable management
 
 # ============================================================================
 # Manim Animation Framework (Core)

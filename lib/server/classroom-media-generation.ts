@@ -16,6 +16,7 @@ import { DEFAULT_TTS_VOICES, DEFAULT_TTS_MODELS, TTS_PROVIDERS } from '@/lib/aud
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
+import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import {
   getServerImageProviders,
   getServerVideoProviders,
@@ -48,6 +49,13 @@ async function ensureDir(dir: string) {
 
 const DOWNLOAD_TIMEOUT_MS = 120_000; // 2 minutes
 const DOWNLOAD_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * Max concurrent server-side TTS synthesis requests. TTS is network-bound and
+ * speech actions are independent; a bounded pool keeps the pipe busy without
+ * exceeding provider per-key concurrency quotas.
+ */
+const TTS_CONCURRENCY = 4;
 
 async function downloadToBuffer(url: string): Promise<Buffer> {
   const resp = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
@@ -248,44 +256,46 @@ export async function generateTTSForClassroom(
     return;
   }
 
+  // Split (mutates scene.actions) is done serially up front, then every speech
+  // action is collected into one flat list. Splitting is CPU-cheap; the slow part
+  // is the per-action network call to the TTS provider, which we run with bounded
+  // concurrency instead of one-at-a-time. Each sub-action already has a unique
+  // audioId keyed by scene order, so completion order doesn't matter.
+  const ttsTasks: Array<{ action: SpeechAction; audioId: string }> = [];
   for (const scene of scenes) {
     if (!scene.actions) continue;
-
-    // Split long speech actions into multiple shorter ones before TTS generation,
-    // mirroring the client-side approach. Each sub-action gets its own audio file.
     scene.actions = splitLongSpeechActions(scene.actions, providerId);
-
-    // Use scene order to make audio IDs unique across scenes
-    const sceneOrder = scene.order;
-
     for (const action of scene.actions) {
       if (action.type !== 'speech' || !(action as SpeechAction).text) continue;
-      const speechAction = action as SpeechAction;
-      // Include scene order in audioId to prevent collision across scenes
-      const audioId = `tts_s${sceneOrder}_${action.id}`;
-
-      try {
-        const result = await generateTTS(
-          {
-            providerId,
-            modelId: DEFAULT_TTS_MODELS[providerId as keyof typeof DEFAULT_TTS_MODELS] || '',
-            apiKey,
-            baseUrl: ttsBaseUrl,
-            voice,
-            speed: speechAction.speed,
-          },
-          speechAction.text,
-        );
-
-        const filename = `${audioId}.${result.format || format}`;
-        await fs.writeFile(path.join(audioDir, filename), result.audio);
-
-        speechAction.audioId = audioId;
-        speechAction.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
-        log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
-      } catch (err) {
-        log.warn(`TTS generation failed for action ${action.id}:`, err);
-      }
+      ttsTasks.push({
+        action: action as SpeechAction,
+        audioId: `tts_s${scene.order}_${action.id}`,
+      });
     }
   }
+
+  await mapWithConcurrency(ttsTasks, TTS_CONCURRENCY, async ({ action, audioId }) => {
+    try {
+      const result = await generateTTS(
+        {
+          providerId,
+          modelId: DEFAULT_TTS_MODELS[providerId as keyof typeof DEFAULT_TTS_MODELS] || '',
+          apiKey,
+          baseUrl: ttsBaseUrl,
+          voice,
+          speed: action.speed,
+        },
+        action.text,
+      );
+
+      const filename = `${audioId}.${result.format || format}`;
+      await fs.writeFile(path.join(audioDir, filename), result.audio);
+
+      action.audioId = audioId;
+      action.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
+      log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
+    } catch (err) {
+      log.warn(`TTS generation failed for action ${action.id}:`, err);
+    }
+  });
 }

@@ -1586,5 +1586,117 @@
       "quiz": "測驗",
       "slide": "頁面"
     }
+  },
+  "workspace": {
+    "sidebar": {
+      "student": "学生端",
+      "teacher": "教师端",
+      "parent": "家长端"
+    }
+  },
+  "teacher": {
+    "title": "教师工作台",
+    "subtitle": "生成讲题视频、可交互 HTML 和教学课件，供课堂即时使用。",
+    "tabs": {
+      "pptGenerator": "教学课件",
+      "deepSolve": "Manim 讲题视频",
+      "interactiveHtml": "可交互 HTML"
+    },
+    "deepSolve": {
+      "questionLabel": "题目 / 问题",
+      "contextLabel": "补充上下文（可选）",
+      "questionPlaceholder": "例如：证明勾股定理，并给出一个直观示例。",
+      "contextPlaceholder": "可以补充年级、已学过的知识点或希望的讲解风格。",
+      "submit": "生成视频",
+      "submitting": "提交中…",
+      "notice": "首次生成需要 5–15 分钟，请保持后端 (:8010) 运行。",
+      "progressTitle": "任务状态",
+      "stage": "当前阶段",
+      "download": "下载 MP4",
+      "state": {
+        "queued": "排队中",
+        "running": "生成中",
+        "succeeded": "已完成",
+        "failed": "已失败",
+        "cancelled": "已取消"
+      },
+      "error": {
+        "questionRequired": "请先填写题目或问题",
+        "submitFailed": "提交失败，请重试",
+        "pollFailed": "无法获取任务状态",
+        "bridgeUnavailable": "Deep Solve 后端未启动或无法连接。请运行 ./services/code2video/start-backend.sh 或设置 VIDEO_DEEPSOLVE_BASE_URL。",
+        "failed": "任务失败"
+      }
+    },
+    "interactiveHtml": {
+      "topic": "主题",
+      "goal": "学习目标",
+      "interactionType": "交互形式",
+      "audience": "面向学生",
+      "constraints": "附加约束（可选）",
+      "audiencePlaceholder": "例如：高一学生 / 编程零基础",
+      "interactionTypePlaceholder": "例如：拖拽排序 / 参数调节 / 单选测验",
+      "constraintsPlaceholder": "例如：仅使用纯 HTML/CSS/JS，一屏可展示。",
+      "preview": "预览",
+      "copy": "复制",
+      "copied": "已复制到剪贴板",
+      "download": "下载 HTML",
+      "generate": "生成 HTML",
+      "generating": "生成中…",
+      "success": "已生成互动页面",
+      "error": {
+        "missingFields": "请完整填写主题 / 目标 / 交互形式 / 面向学生",
+        "generate": "生成失败，请稍后重试",
+        "copy": "复制失败，请手动选择内容"
+      }
+    },
+    "ppt": {
+      "topic": "课程主题",
+      "audienceLevel": "学生水平",
+      "audienceLevelPlaceholder": "例如：高二理科班",
+      "durationMin": "课时时长（分钟）",
+      "slidesCount": "期望幻灯片数量",
+      "notes": "其他要求（可选）",
+      "notesPlaceholder": "例如：重点讲解概念 A，避免公式推导。",
+      "includeQuiz": "包含随堂测验",
+      "includeInteractive": "包含互动内容",
+      "generateVideo": "生成 Manim 视频",
+      "generateVideoHint": "需要 Deep Solve 后端运行",
+      "generateTTS": "生成 TTS 语音",
+      "generate": "生成课件",
+      "generating": "生成中…",
+      "progressTitle": "生成进度",
+      "scenes": "个场景",
+      "openClassroom": "打开课件",
+      "error": {
+        "topicRequired": "请先填写课程主题",
+        "submitFailed": "提交失败，请重试",
+        "pollFailed": "无法获取生成状态",
+        "failed": "生成失败"
+      }
+    },
+    "history": {
+      "title": "最近生成资源",
+      "empty": "还没有生成过资源。生成完成后会在这里出现。",
+      "open": "打开",
+      "delete": "删除",
+      "type": {
+        "manim-video": "讲题视频",
+        "interactive-html": "可交互 HTML",
+        "classroom-ppt": "教学课件"
+      },
+      "status": {
+        "pending": "等待中",
+        "running": "生成中",
+        "ready": "已完成",
+        "error": "失败"
+      }
+    }
+  },
+  "parent": {
+    "comingSoon": {
+      "title": "家长端即将上线",
+      "description": "我们正在设计家长端体验，帮助家长了解学习进度、查看课堂回放，并给到有针对性的建议。敬请期待。"
+    }
   }
 }
