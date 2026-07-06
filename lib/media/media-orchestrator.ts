@@ -12,8 +12,16 @@ import { db, mediaFileKey } from '@/lib/utils/database';
 import type { SceneOutline } from '@/lib/types/generation';
 import type { MediaGenerationRequest } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
+import { mapWithConcurrency } from '@/lib/utils/concurrency';
 
 const log = createLogger('MediaOrchestrator');
+
+/**
+ * Max concurrent media (image/video) generation requests. Kept small because
+ * providers cap per-key concurrency and each request is a long round-trip;
+ * overlapping a few still beats strict one-at-a-time serialization.
+ */
+const MEDIA_CONCURRENCY = 3;
 
 /** Error with a structured errorCode from the API */
 class MediaApiError extends Error {
@@ -56,11 +64,17 @@ export async function generateMediaForOutlines(
   // Enqueue all as pending
   useMediaGenerationStore.getState().enqueueTasks(stageId, allRequests);
 
-  // Process requests serially — image/video APIs have limited concurrency
-  for (const req of allRequests) {
-    if (abortSignal?.aborted) break;
-    await generateSingleMedia(req, stageId, abortSignal);
-  }
+  // Process requests with bounded concurrency. Image/video providers cap
+  // per-key concurrency (and video generation is minutes-long), so we keep the
+  // limit small rather than firing everything at once — but running a few in
+  // flight overlaps their long round-trips instead of waiting one-at-a-time.
+  // shouldContinue stops launching new work as soon as the caller aborts.
+  await mapWithConcurrency(
+    allRequests,
+    MEDIA_CONCURRENCY,
+    (req) => generateSingleMedia(req, stageId, abortSignal),
+    { shouldContinue: () => !abortSignal?.aborted },
+  );
 }
 
 /**
