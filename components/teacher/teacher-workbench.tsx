@@ -18,10 +18,16 @@ export function TeacherWorkbench() {
       </header>
 
       <Tabs defaultValue="ppt" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="ppt">{t('teacher.tabs.pptGenerator')}</TabsTrigger>
-          <TabsTrigger value="deep-solve">{t('teacher.tabs.deepSolve')}</TabsTrigger>
-          <TabsTrigger value="interactive">{t('teacher.tabs.interactiveHtml')}</TabsTrigger>
+        <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:inline-flex sm:h-9 sm:w-fit">
+          <TabsTrigger value="ppt" className="h-8 justify-start sm:justify-center">
+            {t('teacher.tabs.pptGenerator')}
+          </TabsTrigger>
+          <TabsTrigger value="deep-solve" className="h-8 justify-start sm:justify-center">
+            {t('teacher.tabs.deepSolve')}
+          </TabsTrigger>
+          <TabsTrigger value="interactive" className="h-8 justify-start sm:justify-center">
+            {t('teacher.tabs.interactiveHtml')}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ppt">
