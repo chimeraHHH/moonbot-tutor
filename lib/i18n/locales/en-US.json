@@ -1586,5 +1586,117 @@
     "title": "Enter Access Code",
     "placeholder": "Access code",
     "error": "Invalid access code. Please try again."
+  },
+  "workspace": {
+    "sidebar": {
+      "student": "Student",
+      "teacher": "Teacher",
+      "parent": "Parent"
+    }
+  },
+  "teacher": {
+    "title": "Teacher Workbench",
+    "subtitle": "Generate explainer videos, interactive HTML, and lesson decks for immediate classroom use.",
+    "tabs": {
+      "pptGenerator": "Lesson Deck",
+      "deepSolve": "Manim Explainer",
+      "interactiveHtml": "Interactive HTML"
+    },
+    "deepSolve": {
+      "questionLabel": "Problem / question",
+      "contextLabel": "Additional context (optional)",
+      "questionPlaceholder": "e.g. Prove the Pythagorean theorem with an intuitive example.",
+      "contextPlaceholder": "Grade level, prior knowledge, desired explanation style, etc.",
+      "submit": "Generate video",
+      "submitting": "Submitting…",
+      "notice": "The first render takes 5–15 minutes. Keep the backend (:8010) running.",
+      "progressTitle": "Task status",
+      "stage": "Current stage",
+      "download": "Download MP4",
+      "state": {
+        "queued": "Queued",
+        "running": "Rendering",
+        "succeeded": "Ready",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "error": {
+        "questionRequired": "Please enter a problem or question first",
+        "submitFailed": "Submission failed, please retry",
+        "pollFailed": "Cannot fetch task status",
+        "bridgeUnavailable": "Deep Solve backend unreachable. Run ./services/code2video/start-backend.sh or set VIDEO_DEEPSOLVE_BASE_URL.",
+        "failed": "Task failed"
+      }
+    },
+    "interactiveHtml": {
+      "topic": "Topic",
+      "goal": "Learning goal",
+      "interactionType": "Interaction type",
+      "audience": "Audience",
+      "constraints": "Additional constraints (optional)",
+      "audiencePlaceholder": "e.g. 10th grade / no prior programming",
+      "interactionTypePlaceholder": "e.g. drag-and-drop ordering / slider tuning / MCQ",
+      "constraintsPlaceholder": "e.g. Pure HTML/CSS/JS only, fits in one viewport.",
+      "preview": "Preview",
+      "copy": "Copy",
+      "copied": "Copied to clipboard",
+      "download": "Download HTML",
+      "generate": "Generate HTML",
+      "generating": "Generating…",
+      "success": "Interactive page ready",
+      "error": {
+        "missingFields": "Please fill in topic / goal / interaction type / audience",
+        "generate": "Generation failed, please retry",
+        "copy": "Copy failed, please select manually"
+      }
+    },
+    "ppt": {
+      "topic": "Lesson topic",
+      "audienceLevel": "Student level",
+      "audienceLevelPlaceholder": "e.g. 11th grade science stream",
+      "durationMin": "Lesson duration (min)",
+      "slidesCount": "Desired slide count",
+      "notes": "Other requirements (optional)",
+      "notesPlaceholder": "e.g. Emphasize concept A, skip formal derivations.",
+      "includeQuiz": "Include quiz questions",
+      "includeInteractive": "Include interactive content",
+      "generateVideo": "Generate Manim video",
+      "generateVideoHint": "Requires Deep Solve backend running",
+      "generateTTS": "Generate TTS narration",
+      "generate": "Generate lesson",
+      "generating": "Generating…",
+      "progressTitle": "Generation progress",
+      "scenes": "scenes",
+      "openClassroom": "Open lesson",
+      "error": {
+        "topicRequired": "Please enter a lesson topic first",
+        "submitFailed": "Submission failed, please retry",
+        "pollFailed": "Cannot fetch generation status",
+        "failed": "Generation failed"
+      }
+    },
+    "history": {
+      "title": "Recent assets",
+      "empty": "No assets yet. Generated resources will appear here.",
+      "open": "Open",
+      "delete": "Delete",
+      "type": {
+        "manim-video": "Explainer video",
+        "interactive-html": "Interactive HTML",
+        "classroom-ppt": "Lesson deck"
+      },
+      "status": {
+        "pending": "Pending",
+        "running": "Running",
+        "ready": "Ready",
+        "error": "Failed"
+      }
+    }
+  },
+  "parent": {
+    "comingSoon": {
+      "title": "Parent portal coming soon",
+      "description": "We are designing the parent experience to surface learning progress, replay classroom sessions, and provide tailored suggestions. Stay tuned."
+    }
   }
 }
