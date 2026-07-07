@@ -35,12 +35,35 @@ interface Overview {
   failedJobs: number;
 }
 
+interface RecentClassroom {
+  id: string;
+  title: string;
+  sceneCount: number;
+  createdAt: string;
+  ownerEmail: string | null;
+}
+
+interface RecentJob {
+  id: string;
+  status: string;
+  step: string | null;
+  progress: number;
+  message: string | null;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  classroomId: string | null;
+  ownerEmail: string | null;
+}
+
 const ROLE_OPTIONS: Role[] = ['student', 'teacher', 'parent', 'admin'];
 const STATUS_OPTIONS: Status[] = ['active', 'disabled'];
 
 export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [recentClassrooms, setRecentClassrooms] = useState<RecentClassroom[]>([]);
+  const [recentJobs, setRecentJobs] = useState<RecentJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -75,6 +98,8 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
         throw new Error(usersData.error || 'Failed to load users');
       }
       setOverview(overviewData.overview);
+      setRecentClassrooms(overviewData.recentClassrooms || []);
+      setRecentJobs(overviewData.recentJobs || []);
       setUsers(usersData.users);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data');
@@ -336,6 +361,59 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
                 </div>
               ))
             )}
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="font-medium">Recent classrooms</h2>
+            </div>
+            <div className="divide-y divide-border">
+              {recentClassrooms.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-muted-foreground">No classroom records</div>
+              ) : (
+                recentClassrooms.map((classroom) => (
+                  <div key={classroom.id} className="px-4 py-3">
+                    <div className="truncate font-medium">{classroom.title}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{classroom.sceneCount} scenes</span>
+                      <span>{classroom.ownerEmail || 'No owner'}</span>
+                      <span>{new Date(classroom.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="font-medium">Recent generation jobs</h2>
+            </div>
+            <div className="divide-y divide-border">
+              {recentJobs.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-muted-foreground">No generation jobs</div>
+              ) : (
+                recentJobs.map((job) => (
+                  <div key={job.id} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="truncate font-medium">{job.id}</div>
+                      <Badge variant={job.status === 'failed' ? 'destructive' : 'secondary'}>
+                        {job.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{job.progress}%</span>
+                      <span>{job.step || 'queued'}</span>
+                      <span>{job.ownerEmail || 'No owner'}</span>
+                      <span>{new Date(job.createdAt).toLocaleString()}</span>
+                    </div>
+                    {job.error && <p className="mt-2 text-xs text-destructive">{job.error}</p>}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </section>
       </div>

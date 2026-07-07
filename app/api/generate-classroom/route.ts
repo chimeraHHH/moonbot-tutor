@@ -6,6 +6,7 @@ import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { getCurrentUser } from '@/lib/server/auth';
 
 const log = createLogger('GenerateClassroom API');
 
@@ -40,11 +41,12 @@ export async function POST(req: NextRequest) {
     }
 
     const baseUrl = buildRequestOrigin(req);
+    const user = await getCurrentUser();
     const jobId = nanoid(10);
-    const job = await createClassroomGenerationJob(jobId, body);
+    const job = await createClassroomGenerationJob(jobId, body, user?.id);
     const pollUrl = `${baseUrl}/api/generate-classroom/${jobId}`;
 
-    after(() => runClassroomGenerationJob(jobId, body, baseUrl));
+    after(() => runClassroomGenerationJob(jobId, body, baseUrl, user?.id));
 
     return apiSuccess(
       {

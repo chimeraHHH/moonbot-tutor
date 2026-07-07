@@ -8,6 +8,7 @@ import {
   readClassroom,
 } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { getCurrentUser } from '@/lib/server/auth';
 
 const log = createLogger('Classroom API');
 
@@ -30,8 +31,12 @@ export async function POST(request: NextRequest) {
 
     const id = stage.id || randomUUID();
     const baseUrl = buildRequestOrigin(request);
+    const user = await getCurrentUser();
 
-    const persisted = await persistClassroom({ id, stage: { ...stage, id }, scenes }, baseUrl);
+    const persisted = await persistClassroom(
+      { id, stage: { ...stage, id }, scenes, ownerUserId: user?.id },
+      baseUrl,
+    );
 
     return apiSuccess({ id: persisted.id, url: persisted.url }, 201);
   } catch (error) {

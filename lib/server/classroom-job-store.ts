@@ -11,6 +11,7 @@ import {
   ensureClassroomJobsDir,
   writeJsonFileAtomic,
 } from '@/lib/server/classroom-storage';
+import { upsertGenerationJobRecord } from '@/lib/server/admin-records';
 
 export type ClassroomGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -24,6 +25,7 @@ export interface ClassroomGenerationJob {
   updatedAt: string;
   startedAt?: string;
   completedAt?: string;
+  ownerUserId?: string | null;
   inputSummary: {
     requirementPreview: string;
     hasPdf: boolean;
@@ -100,6 +102,7 @@ export function isValidClassroomJobId(jobId: string): boolean {
 export async function createClassroomGenerationJob(
   jobId: string,
   input: GenerateClassroomInput,
+  ownerUserId?: string | null,
 ): Promise<ClassroomGenerationJob> {
   const now = new Date().toISOString();
   const job: ClassroomGenerationJob = {
@@ -110,12 +113,23 @@ export async function createClassroomGenerationJob(
     message: 'Classroom generation job queued',
     createdAt: now,
     updatedAt: now,
+    ownerUserId: ownerUserId ?? null,
     inputSummary: buildInputSummary(input),
     scenesGenerated: 0,
   };
 
   await ensureClassroomJobsDir();
   await writeJsonFileAtomic(jobFilePath(jobId), job);
+  await upsertGenerationJobRecord({
+    id: job.id,
+    ownerUserId: job.ownerUserId,
+    status: job.status,
+    step: job.step,
+    progress: job.progress,
+    message: job.message,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  });
   return job;
 }
 
@@ -151,6 +165,19 @@ export async function updateClassroomGenerationJob(
     };
 
     await writeJsonFileAtomic(jobFilePath(jobId), updated);
+    await upsertGenerationJobRecord({
+      id: updated.id,
+      ownerUserId: updated.ownerUserId,
+      classroomId: updated.result?.classroomId,
+      status: updated.status,
+      step: updated.step,
+      progress: updated.progress,
+      message: updated.message,
+      error: updated.error,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+      completedAt: updated.completedAt,
+    });
     return updated;
   });
 }

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import { upsertClassroomRecord } from '@/lib/server/admin-records';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
@@ -63,6 +64,7 @@ export async function persistClassroom(
     id: string;
     stage: Stage;
     scenes: Scene[];
+    ownerUserId?: string | null;
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
@@ -76,6 +78,14 @@ export async function persistClassroom(
   await ensureClassroomsDir();
   const filePath = path.join(CLASSROOMS_DIR, `${data.id}.json`);
   await writeJsonFileAtomic(filePath, classroomData);
+  await upsertClassroomRecord({
+    id: data.id,
+    ownerUserId: data.ownerUserId,
+    title: data.stage.name || 'Untitled Stage',
+    storagePath: filePath,
+    sceneCount: data.scenes.length,
+    createdAt: classroomData.createdAt,
+  });
 
   return {
     ...classroomData,
