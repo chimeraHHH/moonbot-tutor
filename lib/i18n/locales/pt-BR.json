@@ -1591,7 +1591,8 @@
     "sidebar": {
       "student": "Student",
       "teacher": "Teacher",
-      "parent": "Parent"
+      "parent": "Parent",
+      "admin": "Admin"
     }
   },
   "teacher": {

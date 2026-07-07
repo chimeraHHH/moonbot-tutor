@@ -1,41 +1,63 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { GraduationCap, Presentation, Users } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { GraduationCap, LogOut, Presentation, Shield, Users } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import type { UserRole } from '@/lib/server/auth-types';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface RoleItem {
   href: string;
   labelKey: string;
   icon: typeof GraduationCap;
+  roles: UserRole[];
 }
 
 const ROLES: RoleItem[] = [
-  { href: '/student', labelKey: 'workspace.sidebar.student', icon: GraduationCap },
-  { href: '/teacher', labelKey: 'workspace.sidebar.teacher', icon: Presentation },
-  { href: '/parent', labelKey: 'workspace.sidebar.parent', icon: Users },
+  {
+    href: '/student',
+    labelKey: 'workspace.sidebar.student',
+    icon: GraduationCap,
+    roles: ['student', 'admin'],
+  },
+  {
+    href: '/teacher',
+    labelKey: 'workspace.sidebar.teacher',
+    icon: Presentation,
+    roles: ['teacher', 'admin'],
+  },
+  {
+    href: '/parent',
+    labelKey: 'workspace.sidebar.parent',
+    icon: Users,
+    roles: ['parent', 'admin'],
+  },
+  { href: '/admin', labelKey: 'workspace.sidebar.admin', icon: Shield, roles: ['admin'] },
 ];
 
-export function RoleSidebar() {
+export function RoleSidebar({ currentUserRole }: { currentUserRole?: UserRole }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useI18n();
+  const visibleRoles = currentUserRole
+    ? ROLES.filter((item) => item.roles.includes(currentUserRole))
+    : ROLES;
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  }
 
   return (
     <nav
       aria-label="Workspace roles"
       className="shrink-0 w-14 min-h-[100dvh] flex flex-col items-center gap-2 py-4 border-r border-border/40 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm"
     >
-      <Link
-        href="/student"
-        aria-label="OpenMAIC"
-        className="mb-2 flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 text-white text-xs font-bold shadow-sm"
-      >
-        M
-      </Link>
-      {ROLES.map(({ href, labelKey, icon: Icon }) => {
+      {visibleRoles.map(({ href, labelKey, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Tooltip key={href}>
@@ -58,6 +80,25 @@ export function RoleSidebar() {
           </Tooltip>
         );
       })}
+      {currentUserRole && (
+        <div className="mt-auto">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Sign out"
+                onClick={logout}
+                className="size-10 text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground"
+              >
+                <LogOut className="size-[18px]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Sign out</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
     </nav>
   );
 }

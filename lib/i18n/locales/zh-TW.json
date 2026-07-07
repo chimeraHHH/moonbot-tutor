@@ -1591,7 +1591,8 @@
     "sidebar": {
       "student": "学生端",
       "teacher": "教师端",
-      "parent": "家长端"
+      "parent": "家长端",
+      "admin": "管理后台"
     }
   },
   "teacher": {

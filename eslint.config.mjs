@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     'packages/docs/**',
     'packages/mathml2omml/**',
     'packages/pptxgenjs/**',
+    '**/.venv/**',
+    'services/code2video/.venv/**',
     // Our own @openmaic/* packages: lint the source, but skip build output,
     // installed deps, and the vendored JS sources under importer/src1.
     'packages/@openmaic/*/dist/**',
