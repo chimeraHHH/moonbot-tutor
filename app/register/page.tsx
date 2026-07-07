@@ -3,14 +3,15 @@
 import { FormEvent, Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LockKeyhole, LogIn } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-function LoginForm() {
+function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -22,21 +23,21 @@ function LoginForm() {
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ displayName, email, password }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || 'Registration failed');
       }
 
       const next = searchParams.get('next');
       router.replace(next && next.startsWith('/') ? next : '/student');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setSubmitting(false);
     }
@@ -55,10 +56,10 @@ function LoginForm() {
           <div className="max-w-xl pb-12">
             <p className="text-sm font-medium text-muted-foreground">AI interactive classroom</p>
             <h1 className="mt-4 text-5xl font-semibold tracking-normal">
-              Sign in to manage learning workspaces.
+              Create your learning workspace account.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
-              Role-based access keeps student, teacher, parent, and admin workflows separated.
+              Student accounts can start from the classroom workspace immediately.
             </p>
           </div>
         </section>
@@ -73,13 +74,23 @@ function LoginForm() {
             </div>
             <div className="mb-8">
               <div className="mb-4 flex size-10 items-center justify-center rounded-lg border border-border">
-                <LockKeyhole className="size-5" />
+                <UserPlus className="size-5" />
               </div>
-              <h2 className="text-2xl font-semibold tracking-normal">Sign in</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use your SophosEdu account.</p>
+              <h2 className="text-2xl font-semibold tracking-normal">Create account</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Start with a student account.</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Name</Label>
+                <Input
+                  id="displayName"
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  required
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -96,7 +107,8 @@ function LoginForm() {
                 <Input
                   id="password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
+                  minLength={8}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -108,17 +120,17 @@ function LoginForm() {
                 </div>
               )}
               <Button type="submit" className="w-full gap-2" disabled={submitting}>
-                <LogIn className="size-4" />
-                {submitting ? 'Signing in' : 'Sign in'}
+                <UserPlus className="size-4" />
+                {submitting ? 'Creating account' : 'Create account'}
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              No account?{' '}
+              Already have an account?{' '}
               <Link
                 className="font-medium text-foreground underline-offset-4 hover:underline"
-                href="/register"
+                href="/login"
               >
-                Create one
+                Sign in
               </Link>
             </p>
           </div>
@@ -128,7 +140,7 @@ function LoginForm() {
   );
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <Suspense
       fallback={
@@ -137,7 +149,7 @@ export default function LoginPage() {
         </main>
       }
     >
-      <LoginForm />
+      <RegisterForm />
     </Suspense>
   );
 }

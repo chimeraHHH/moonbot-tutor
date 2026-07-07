@@ -18,6 +18,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://sophosedu:sophosedu_dev_password@postgres:5432/sophosedu}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-}
     depends_on:
       - postgres
     volumes:

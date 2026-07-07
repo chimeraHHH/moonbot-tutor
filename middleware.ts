@@ -60,6 +60,7 @@ function decodeBase64Url(value: string): string {
 function isPublicAuthPath(pathname: string): boolean {
   return (
     pathname === '/login' ||
+    pathname === '/register' ||
     pathname === '/api/health' ||
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/api/access-code/')
