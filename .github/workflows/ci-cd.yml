@@ -50,11 +50,10 @@ jobs:
 
       - name: Build & push
         run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --tag ghcr.io/${{ steps.owner.outputs.lower }}/moonbot-tutor-backend:latest \
-            --tag ghcr.io/${{ steps.owner.outputs.lower }}/moonbot-tutor-backend:${{ github.sha }} \
-            --push backend
+          IMAGE="ghcr.io/${{ steps.owner.outputs.lower }}/moonbot-tutor-backend"
+          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" backend
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
 
   deploy:
     name: Deploy to server
