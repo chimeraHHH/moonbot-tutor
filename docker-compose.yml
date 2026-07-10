@@ -1,0 +1,24 @@
+services:
+  backend:
+    # Image published by CI to GHCR. For local dev use `npm run start:dev` instead.
+    image: ghcr.io/chimerahh/moonbot-tutor-backend:latest
+    container_name: moonbot-tutor-backend
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      - PORT=3000
+      # The NestJS BFF forwards here (FastAPI code2video / Deep Solve).
+      - CODE2VIDEO_BASE_URL=http://code2video:8010
+    depends_on:
+      - code2video
+
+  # FastAPI Manim (code2video) service — placeholder until ported in.
+  code2video:
+    build: ./services/code2video
+    container_name: moonbot-tutor-code2video
+    restart: unless-stopped
+    expose:
+      - "8010"
+    environment:
+      - PORT=8010

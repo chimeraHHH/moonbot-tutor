@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# env / secrets — NEVER commit
+.env
+.env.local
+.env.*
+!.env.example
+
+# cloned reference repo (not part of this project)
+/real-time-tutor/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# logs & misc
+*.log
+npm-debug.log*
+.DS_Store
+coverage/
