@@ -53,6 +53,7 @@ jobs:
   deploy:
     name: Ship & build & run on server
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [test, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -68,7 +69,16 @@ jobs:
         run: |
           tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf backend-deploy.tar .
           tar -C services/code2video --exclude=__pycache__ --exclude=.venv --exclude='*.pyc' -czf c2v-deploy.tar .
-          tar -C frontend --exclude=node_modules --exclude=.next --exclude=.git --exclude=tests --exclude=.pnpm-store -czf frontend-deploy.tar .
+          tar -C frontend \
+            --exclude=node_modules \
+            --exclude=.next \
+            --exclude=.git \
+            --exclude=tests \
+            --exclude=.pnpm-store \
+            --exclude=assets \
+            --exclude=public \
+            -czf frontend-deploy.tar .
+          ls -lh backend-deploy.tar c2v-deploy.tar frontend-deploy.tar
 
       - name: Ship & build & run on server
         env:
@@ -82,12 +92,26 @@ jobs:
           C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
-          set -e
+          set -euo pipefail
           REMOTE="$SERVER_USER@$SERVER_HOST"
           SSHOPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=30"
-          sshpass -p "$SERVER_PASSWORD" scp $SSHOPTS backend-deploy.tar c2v-deploy.tar frontend-deploy.tar "$REMOTE:/home/$SERVER_USER/"
-          sshpass -p "$SERVER_PASSWORD" ssh $SSHOPTS "$REMOTE" 'bash -s' <<EOF
-          set -e
+
+          sshpass -p "$SERVER_PASSWORD" scp $SSHOPTS \
+            backend-deploy.tar c2v-deploy.tar frontend-deploy.tar \
+            "$REMOTE:/home/$SERVER_USER/"
+
+          # Stream shell-escaped secret assignments and a literal script over
+          # stdin. Secrets are never expanded into script syntax or staged in a
+          # plaintext file on the runner or deployment server.
+          {
+            printf 'set -e\n'
+            printf 'C2V_LLM_API_KEY=%q\n' "$C2V_LLM_API_KEY"
+            printf 'C2V_LLM_BASE_URL=%q\n' "$C2V_LLM_BASE_URL"
+            printf 'C2V_LLM_MODEL=%q\n' "$C2V_LLM_MODEL"
+            printf 'C2V_FIX_MODEL=%q\n' "$C2V_FIX_MODEL"
+            printf 'C2V_TTS_DOUBAO_KEY=%q\n' "$C2V_TTS_DOUBAO_KEY"
+            printf 'DEEPSEEK_API_KEY=%q\n' "$DEEPSEEK_API_KEY"
+            cat <<'REMOTE_SCRIPT'
           cd ~
           rm -rf moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
           mkdir -p moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
@@ -95,12 +119,30 @@ jobs:
           tar xzf c2v-deploy.tar -C moonbot-c2v-src
           tar xzf frontend-deploy.tar -C moonbot-frontend-src
 
+          STATIC_PUBLIC="$HOME/moonbot-static/frontend-public"
+          if [ ! -d "$STATIC_PUBLIC" ] || [ -z "$(find "$STATIC_PUBLIC" -type f -print -quit)" ]; then
+            echo "ERROR: persistent frontend public directory is missing or empty: $STATIC_PUBLIC" >&2
+            echo "Run the static-resource initialization documented in README.md." >&2
+            exit 1
+          fi
+          cp -a "$STATIC_PUBLIC" moonbot-frontend-src/public
+          echo "Restored persistent frontend public files:"
+          du -sh moonbot-frontend-src/public
+
           docker network create moonbot-net 2>/dev/null || true
 
           # code2video (heavy: manim + LaTeX base; layers cache after first build)
-          docker build -t moonbot-code2video:ci moonbot-c2v-src
-          docker build -t moonbot-backend:ci moonbot-backend-src
-          docker build -t moonbot-frontend:ci moonbot-frontend-src
+          echo "::group::Build code2video image"
+          docker build --progress=plain -t moonbot-code2video:ci moonbot-c2v-src
+          echo "::endgroup::"
+
+          echo "::group::Build backend image"
+          docker build --progress=plain -t moonbot-backend:ci moonbot-backend-src
+          echo "::endgroup::"
+
+          echo "::group::Build frontend image"
+          docker build --progress=plain -t moonbot-frontend:ci moonbot-frontend-src
+          echo "::endgroup::"
 
           docker stop moonbot-code2video 2>/dev/null || true
           docker rm   moonbot-code2video 2>/dev/null || true
@@ -132,4 +174,5 @@ jobs:
             moonbot-frontend:ci
 
           docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-          EOF
+          REMOTE_SCRIPT
+          } | sshpass -p "$SERVER_PASSWORD" ssh $SSHOPTS "$REMOTE" 'bash -s'
