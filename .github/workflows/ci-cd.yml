@@ -28,7 +28,7 @@ jobs:
       - run: npm test
 
   frontend:
-    name: Build & test (Next.js)
+    name: Build & test (Next.js / OpenMAIC)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,16 +36,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - run: npm ci
-      - run: npm run gen:api # regenerate typed client from ../openapi.yaml
-      - run: npm test
-      - run: npm run build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
 
   deploy:
     name: Ship & build & run on server
@@ -65,7 +68,7 @@ jobs:
         run: |
           tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf backend-deploy.tar .
           tar -C services/code2video --exclude=__pycache__ --exclude=.venv --exclude='*.pyc' -czf c2v-deploy.tar .
-          tar -C frontend --exclude=node_modules --exclude=.next --exclude=.git -czf frontend-deploy.tar .
+          tar -C frontend --exclude=node_modules --exclude=.next --exclude=.git --exclude=tests --exclude=.pnpm-store -czf frontend-deploy.tar .
 
       - name: Ship & build & run on server
         env:
@@ -77,6 +80,7 @@ jobs:
           C2V_LLM_MODEL: ${{ secrets.C2V_LLM_MODEL }}
           C2V_FIX_MODEL: ${{ secrets.C2V_FIX_MODEL }}
           C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           set -e
           REMOTE="$SERVER_USER@$SERVER_HOST"
@@ -96,7 +100,7 @@ jobs:
           # code2video (heavy: manim + LaTeX base; layers cache after first build)
           docker build -t moonbot-code2video:ci moonbot-c2v-src
           docker build -t moonbot-backend:ci moonbot-backend-src
-          docker build --build-arg NEXT_PUBLIC_API_URL=http://82.157.189.119:8088 -t moonbot-frontend:ci moonbot-frontend-src
+          docker build -t moonbot-frontend:ci moonbot-frontend-src
 
           docker stop moonbot-code2video 2>/dev/null || true
           docker rm   moonbot-code2video 2>/dev/null || true
@@ -121,6 +125,10 @@ jobs:
           docker rm   moonbot-frontend 2>/dev/null || true
           docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
             -e PORT=3000 \
+            -e DEFAULT_MODEL=deepseek:deepseek-v4-pro \
+            -e DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+            -e VIDEO_DEEPSOLVE_BASE_URL=http://moonbot-tutor-backend:3000 \
+            -e TTS_DOUBAO_API_KEY="$C2V_TTS_DOUBAO_KEY" \
             moonbot-frontend:ci
 
           docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'

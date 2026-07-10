@@ -1,15 +1,27 @@
-import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+import './globals.css';
+import '@openmaic/renderer/fonts.css';
+import 'animate.css';
+import 'katex/dist/katex.min.css';
+import { ThemeProvider } from '@/lib/hooks/use-theme';
+import { I18nProvider } from '@/lib/hooks/use-i18n';
+import { Toaster } from '@/components/ui/sonner';
+import { ServerProvidersInit } from '@/components/server-providers-init';
+import { AccessCodeGuard } from '@/components/access-code-guard';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const inter = localFont({
+  src: '../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
+  variable: '--font-sans',
+  weight: '100 900',
 });
 
 export const metadata: Metadata = {
-  title: "Moonbot Tutor",
-  description: "Ask a question — get a Manim explainer video.",
+  title: 'Real-Time Tutor',
+  description:
+    'The open-source AI interactive classroom. Upload a PDF to instantly generate an immersive, multi-agent learning experience.',
 };
 
 export default function RootLayout({
@@ -18,9 +30,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-        {children}
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body
+        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
+        suppressHydrationWarning
+      >
+        <ThemeProvider>
+          <I18nProvider>
+            <ServerProvidersInit />
+            <AccessCodeGuard>{children}</AccessCodeGuard>
+            <Toaster position="top-center" />
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

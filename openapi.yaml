@@ -178,7 +178,7 @@ components:
 
     TaskStatus:
       type: object
-      required: [taskId, status]
+      required: [taskId, status, progress]
       properties:
         taskId:
           type: string
@@ -189,6 +189,12 @@ components:
           type: string
           nullable: true
           description: Current stage when status is `running`.
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Overall pipeline progress 0–100.
         videoUrl:
           type: string
           nullable: true

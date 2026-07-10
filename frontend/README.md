@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Real-Time Tutor
 
-## Getting Started
+An AI-powered interactive classroom platform. Turn any topic or document into a
+multi-agent lesson — slides, quizzes, interactive simulations, and step-by-step
+**Deep Solve** explainer videos rendered with Manim.
 
-First, run the development server:
+## Structure
+
+- **App** (Next.js, repo root) — classroom generation, multi-agent playback, TTS/whiteboard, export.
+- **`services/code2video/`** — the **Deep Solve** backend (Code2Video / Manim): a
+  single FastAPI service (one port, `:8010`) that turns a problem into a narrated
+  Manim explainer video via a 7-stage pipeline. It also hosts the LLM shim and TTS
+  in-process, so the whole stack runs on one port. The app calls it as a video
+  provider through `VIDEO_DEEPSOLVE_BASE_URL`.
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # fill in at least one LLM provider key
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Enabling Deep Solve (Manim) videos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The backend is a **single process on one port** (`:8010`) — pipeline + LLM shim +
+TTS folded together. It reads its LLM key from `.env.local` at runtime.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+One-time setup (macOS):
 
-## Learn More
+```bash
+brew install pkg-config pango ffmpeg
+python3.12 -m venv services/code2video/.venv
+source services/code2video/.venv/bin/activate
+pip install -r services/code2video/src/requirements.txt
+```
 
-To learn more about Next.js, take a look at the following resources:
+Then:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Start the backend (single command, single port):
+   ```bash
+   ./services/code2video/start-backend.sh
+   ```
+2. In `.env.local` set `VIDEO_DEEPSOLVE_BASE_URL=http://localhost:8010` and leave
+   other `VIDEO_*` providers unset so Deep Solve is used for explainer videos.
+3. `pnpm dev`, then generate a classroom with video generation enabled — STEM
+   scenes are produced as Manim explainer videos and embedded as slide videos.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> The backend picks up the LLM from `C2V_LLM_*` env (the launch script defaults to
+> the app's `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` via the built-in OpenAI↔Anthropic
+> shim). Code-gen quality varies by topic/model; a stronger model renders more
+> reliably than the Haiku default.
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Based on the [OpenMAIC](https://github.com/THU-MAIC/OpenMAIC) platform. MIT licensed — see [LICENSE](LICENSE).
