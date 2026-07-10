@@ -49,10 +49,22 @@ def create_client(svc: str, base_url: str, api_key: str, api_version: str = None
     Build an API client with compatibility for:
     - Azure OpenAI style: api_type='azure' (default when api_version exists)
     - OpenAI-compatible style: api_type='openai_compatible' (OpenAI SDK + base_url)
+    - Vertex Gemini OpenAI-compat: requires x-goog-api-key header and proxy support.
     """
     api_type = resolve_api_type(svc, base_url, api_version)
 
     if api_type in {"openai", "openai_compatible", "compat"}:
+        if base_url and "aiplatform.googleapis.com" in base_url:
+            import httpx
+            proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+            transport = httpx.HTTPTransport(proxy=proxy) if proxy else None
+            http_client = httpx.Client(transport=transport, timeout=120.0) if transport else httpx.Client(timeout=120.0)
+            return OpenAI(
+                api_key="ignored",
+                base_url=base_url,
+                default_headers={"Authorization": "skip", "x-goog-api-key": api_key},
+                http_client=http_client,
+            )
         kwargs = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url

@@ -7,6 +7,9 @@ import type {
   VideoManifest,
   GeneratedAgentConfig,
 } from '@/lib/types/stage';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import type { PeerAgentClassroomState } from '@/lib/classroom/peer-agents';
+import type { GenerationContext } from '@/lib/classroom/generation';
 import type { Action } from '@/lib/types/action';
 import type {
   SessionType,
@@ -54,6 +57,8 @@ export interface StageRecord {
   createdAt: number; // timestamp
   updatedAt: number; // timestamp
   languageDirective?: string;
+  lessonLanguage?: LessonLanguage;
+  peerAgentState?: PeerAgentClassroomState;
   style?: string;
   currentSceneId?: string;
   agentIds?: string[]; // Agent IDs selected at creation time
@@ -61,6 +66,7 @@ export interface StageRecord {
   interactiveMode?: boolean; // Interactive Mode flag; non-indexed
   taskEngineMode?: boolean; // Vocational Task Engine flag; non-indexed
   generatedAgentConfigs?: GeneratedAgentConfig[]; // Editor-authored agent roster snapshot
+  generationContext?: GenerationContext;
 }
 
 /**
@@ -77,6 +83,8 @@ export interface SceneRecord {
   whiteboard?: Whiteboard[]; // Stored as JSON
   createdAt: number;
   updatedAt: number;
+  generationId?: string;
+  sessionId?: string;
 }
 
 /**

@@ -86,7 +86,7 @@ export async function buildSceneFromOutline(
 
   // Step 1: Generate content (with images if available)
   onPhaseChange?.('content');
-  log.debug(`Step 1: Generating content for: ${outline.title}`);
+  log.debug(`Step 1: Generating content [type=${outline.type}]`);
   if (assignedImages && assignedImages.length > 0) {
     log.debug(
       `Using ${assignedImages.length} assigned images: ${assignedImages.map((img) => img.id).join(', ')}`,
@@ -104,20 +104,20 @@ export async function buildSceneFromOutline(
     languageDirective: langText,
   });
   if (!content) {
-    log.error(`Failed to generate content for: ${outline.title}`);
+    log.error(`Failed to generate content [type=${outline.type}]`);
     return null;
   }
 
   // Step 2: Generate Actions
   onPhaseChange?.('actions');
-  log.debug(`Step 2: Generating actions for: ${outline.title}`);
+  log.debug(`Step 2: Generating actions [type=${outline.type}]`);
   const actions = await generateSceneActions(outline, content, aiCall, {
     ctx,
     agents,
     userProfile,
     languageDirective: langText,
   });
-  log.debug(`Generated ${actions.length} actions for: ${outline.title}`);
+  log.debug(`Generated ${actions.length} actions [type=${outline.type}]`);
 
   // Build complete Scene object
   return buildCompleteScene(outline, content, actions, stageId);

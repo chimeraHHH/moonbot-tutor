@@ -71,7 +71,27 @@ def _resolve_model(explicit_model: Optional[str], env_key: str, default_model: s
 def _create_openai_client(api_key: Optional[str], base_url: Optional[str]) -> OpenAI:
     resolved_key = _resolve_api_key(api_key)
     resolved_base = _resolve_base_url(base_url)
-    return OpenAI(api_key=resolved_key, base_url=resolved_base)
+    return _build_openai_client(resolved_key, resolved_base)
+
+
+def _build_openai_client(api_key: str, base_url: str) -> OpenAI:
+    """Vertex AI's OpenAI-compat endpoint rejects `Authorization: Bearer` for
+    Express API keys and requires `x-goog-api-key` instead. When the base URL
+    points at aiplatform.googleapis.com, override the SDK's auto-added
+    Authorization header and attach an httpx client that honors HTTPS_PROXY
+    (needed to reach Vertex from behind GFW)."""
+    if "aiplatform.googleapis.com" in (base_url or ""):
+        import httpx
+        proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+        transport = httpx.HTTPTransport(proxy=proxy) if proxy else None
+        http_client = httpx.Client(transport=transport, timeout=120.0) if transport else httpx.Client(timeout=120.0)
+        return OpenAI(
+            api_key="ignored",
+            base_url=base_url,
+            default_headers={"Authorization": "skip", "x-goog-api-key": api_key},
+            http_client=http_client,
+        )
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 
 def _extract_json_text(raw_text: str) -> str:

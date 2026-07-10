@@ -24,7 +24,7 @@ import {
   X,
   Presentation,
 } from 'lucide-react';
-import { useI18n } from '@/lib/hooks/use-i18n';
+import { hasExplicitLocaleSelection, useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ import { GenerationToolbar } from '@/components/generation/generation-toolbar';
 import { AgentBar } from '@/components/agent/agent-bar';
 import { useTheme } from '@/lib/hooks/use-theme';
 import { nanoid } from 'nanoid';
+import { replaceGenerationSession } from '@/lib/classroom/generation';
 import { storePdfBlob } from '@/lib/utils/image-storage';
 import { normalizeDocumentMimeType } from '@/lib/document/mime';
 import type { UserRequirements } from '@/lib/types/generation';
@@ -90,7 +91,7 @@ const initialFormState: FormState = {
 };
 
 function HomePage() {
-  const { t } = useI18n();
+  const { t, locale, hasExplicitLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const showVocationalTestUi = shouldShowVocationalTestUi();
@@ -304,6 +305,8 @@ function HomePage() {
         webSearch: form.webSearch || undefined,
         interactiveMode: form.vocationalTestMode ? true : form.interactiveMode,
         ...(form.vocationalTestMode ? { taskEngineMode: true } : {}),
+        lessonLocale: hasExplicitLocale || hasExplicitLocaleSelection() ? locale : undefined,
+        uiLocale: locale,
       };
 
       let pdfStorageKey: string | undefined;
@@ -333,6 +336,8 @@ function HomePage() {
 
       const sessionState = {
         sessionId: nanoid(),
+        generationId: nanoid(),
+        classroomId: nanoid(10),
         requirements,
         pdfText: '',
         pdfImages: [],
@@ -345,7 +350,9 @@ function HomePage() {
         sceneOutlines: null,
         currentStep: 'generating' as const,
       };
-      sessionStorage.setItem('generationSession', JSON.stringify(sessionState));
+      // This is an intentional replacement: every click starts a distinct generation.
+      // Older preview tasks use compare-before-write and cannot overwrite this session.
+      replaceGenerationSession(sessionStorage, sessionState);
 
       router.push('/generation-preview');
     } catch (err) {

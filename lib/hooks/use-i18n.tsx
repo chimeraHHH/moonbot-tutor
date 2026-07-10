@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type Locale, defaultLocale, supportedLocales } from '@/lib/i18n';
 import '@/lib/i18n/config';
@@ -18,8 +18,22 @@ function resolveLocale(lang: string): Locale {
   return match?.code ?? defaultLocale;
 }
 
+function hasStoredLocale(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean(localStorage.getItem(LOCALE_STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+export function hasExplicitLocaleSelection(): boolean {
+  return hasStoredLocale();
+}
+
 type I18nContextType = {
   locale: Locale;
+  hasExplicitLocale: boolean;
   setLocale: (locale: Locale) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 };
@@ -30,6 +44,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const { t, i18n } = useTranslation();
 
   const locale = (i18n.language || defaultLocale) as Locale;
+  const [hasExplicitLocale, setHasExplicitLocale] = useState(hasStoredLocale);
 
   // Detect language after hydration to avoid SSR mismatch.
   // i18next handles fallback automatically: if the detected language
@@ -46,15 +61,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLocale = (newLocale: Locale) => {
-    i18n.changeLanguage(newLocale);
     try {
       localStorage.setItem(LOCALE_STORAGE_KEY, newLocale);
+      setHasExplicitLocale(true);
     } catch {
       // localStorage unavailable
     }
+    i18n.changeLanguage(newLocale);
   };
 
-  return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>;
+  return (
+    <I18nContext.Provider value={{ locale, hasExplicitLocale, setLocale, t }}>
+      {children}
+    </I18nContext.Provider>
+  );
 }
 
 export function useI18n() {

@@ -41,7 +41,7 @@ API_NAME_TO_SERVICE = {
 PORT = int(os.getenv("PORT", "8010"))
 # Optional OpenAI->Anthropic shim upstream (used when the LLM is Anthropic-native,
 # e.g. a Claude proxy). The pipeline points its OpenAI base_url at /shim/v1.
-SHIM_UPSTREAM = os.getenv("C2V_SHIM_UPSTREAM", "https://byteswarm.ai/claude/v1/messages")
+SHIM_UPSTREAM = os.getenv("C2V_SHIM_UPSTREAM", "https://api.anthropic.com/v1/messages")
 SHIM_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126 Safari/537.36"
@@ -826,9 +826,10 @@ async def generate_tts(request: TTSRequest) -> JSONResponse:
     from text_utils import preprocess_tts_text
 
     filepath = TTS_STATIC_DIR / f"{uuid.uuid4()}.mp3"
+    edge_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or None
     try:
         communicate = edge_tts.Communicate(
-            preprocess_tts_text(request.text), request.voice, rate=request.rate
+            preprocess_tts_text(request.text), request.voice, rate=request.rate, proxy=edge_proxy,
         )
         await communicate.save(str(filepath))
         duration = MP3(str(filepath)).info.length

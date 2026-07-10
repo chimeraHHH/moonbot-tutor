@@ -10,7 +10,7 @@ requests==2.32.4            # HTTP requests for asset downloads
 numpy==2.2.6                # Numerical operations and statistics
 scipy==1.15.3               # Statistical tests (scipy.stats)
 psutil==7.0.0               # System resource monitoring
-python-dotenv==1.2.2        # Environment variable management
+python-dotenv==1.2.2        # Environment variable management (>=1.2.2 required by manim-voiceover 0.4.0)
 
 # ============================================================================
 # Manim Animation Framework (Core)
@@ -117,7 +117,7 @@ fastapi                     # Deep-solve bridge API (also hosts LLM shim + TTS)
 uvicorn                     # ASGI server
 edge-tts                    # Text-to-speech (folded bridge TTS + manim-voiceover backend)
 mutagen                     # MP3 duration probing for TTS
-manim-voiceover             # Manim's own TTS: narration synced inside scenes (needs system SoX)
+manim-voiceover==0.4.0      # Manim's own TTS: narration synced inside scenes (needs system SoX). 0.4.0 requires python-dotenv>=1.2.2
 
 # ============================================================================
 # REMOVED DEPENDENCIES

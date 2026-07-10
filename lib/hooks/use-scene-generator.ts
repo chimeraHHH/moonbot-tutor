@@ -14,6 +14,12 @@ import type {
 } from '@/lib/types/generation';
 import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import type { Scene } from '@/lib/types/stage';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import {
+  isSameGeneration,
+  traceGeneration,
+  type GenerationContext,
+} from '@/lib/classroom/generation';
 import type { SpeechAction } from '@/lib/types/action';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
@@ -43,6 +49,7 @@ interface SceneContentResult {
   content?: unknown;
   effectiveOutline?: SceneOutline;
   error?: string;
+  generationContext?: GenerationContext;
 }
 
 interface SceneActionsResult {
@@ -50,6 +57,7 @@ interface SceneActionsResult {
   scene?: Scene;
   previousSpeeches?: string[];
   error?: string;
+  generationContext?: GenerationContext;
 }
 
 type ClientRetryOptions<T> = Partial<
@@ -131,7 +139,9 @@ export async function fetchSceneContent(
     };
     agents?: AgentInfo[];
     languageDirective?: string;
+    lessonLanguage?: LessonLanguage;
     requirements?: UserRequirements;
+    generationContext?: GenerationContext;
   },
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<SceneContentResult>,
@@ -151,7 +161,15 @@ export async function fetchSceneContent(
           throw createHttpError(response, data, 'Scene content request failed');
         }
 
-        return data as unknown as SceneContentResult;
+        const result = data as unknown as SceneContentResult;
+        if (
+          params.generationContext &&
+          !isSameGeneration(result.generationContext, params.generationContext)
+        ) {
+          traceGeneration(params.generationContext, 'scene-content.response.discarded');
+          return { success: false, error: 'Stale scene-content response discarded' };
+        }
+        return result;
       },
       {
         label: `scene content "${params.outline.title}"`,
@@ -177,6 +195,8 @@ export async function fetchSceneActions(
     previousSpeeches?: string[];
     userProfile?: string;
     languageDirective?: string;
+    lessonLanguage?: LessonLanguage;
+    generationContext?: GenerationContext;
   },
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<SceneActionsResult>,
@@ -196,7 +216,15 @@ export async function fetchSceneActions(
           throw createHttpError(response, data, 'Scene actions request failed');
         }
 
-        return data as unknown as SceneActionsResult;
+        const result = data as unknown as SceneActionsResult;
+        if (
+          params.generationContext &&
+          !isSameGeneration(result.generationContext, params.generationContext)
+        ) {
+          traceGeneration(params.generationContext, 'scene-actions.response.discarded');
+          return { success: false, error: 'Stale scene-actions response discarded' };
+        }
+        return result;
       },
       {
         label: `scene actions "${params.outline.title}"`,
@@ -383,6 +411,8 @@ export interface GenerationParams {
   agents?: AgentInfo[];
   userProfile?: string;
   languageDirective?: string;
+  lessonLanguage?: LessonLanguage;
+  generationContext?: GenerationContext;
 }
 
 export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
@@ -418,6 +448,15 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
         generatingRef.current = false;
         return;
       }
+      const isRunActive = () => {
+        const current = store.getState();
+        if (abortRef.current || current.generationEpoch !== startEpoch) return false;
+        if (current.stage?.id !== stage.id) return false;
+        if (params.generationContext) {
+          return isSameGeneration(current.stage.generationContext, params.generationContext);
+        }
+        return true;
+      };
 
       store.getState().setGenerationStatus('generating');
 
@@ -487,6 +526,10 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               stageInfo: params.stageInfo,
               agents: params.agents,
               languageDirective: params.languageDirective,
+              lessonLanguage: params.lessonLanguage ?? stage.lessonLanguage,
+              generationContext: params.generationContext
+                ? { ...params.generationContext, sceneId: outline.id }
+                : undefined,
             },
             signal,
           );
@@ -513,7 +556,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
                 },
                 {
                   shouldContinue: () =>
-                    !abortRef.current && store.getState().generationEpoch === startEpoch,
+                    isRunActive(),
                 },
               ).map((promise, i) => [pending[i].id, promise] as const),
             )
@@ -522,7 +565,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
         let pausedByFailureOrAbort = false;
         let hadContentFailure = false;
         for (const outline of pending) {
-          if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
+          if (!isRunActive()) {
             store.getState().setGenerationStatus('paused');
             pausedByFailureOrAbort = true;
             break;
@@ -545,7 +588,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           }
 
           if (!contentResult.success || !contentResult.content) {
-            if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
+            if (!isRunActive()) {
               pausedByFailureOrAbort = true;
               break;
             }
@@ -564,7 +607,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             break;
           }
 
-          if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
+          if (!isRunActive()) {
             store.getState().setGenerationStatus('paused');
             pausedByFailureOrAbort = true;
             break;
@@ -582,6 +625,10 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               previousSpeeches,
               userProfile: params.userProfile,
               languageDirective: params.languageDirective,
+              lessonLanguage: params.lessonLanguage ?? stage.lessonLanguage,
+              generationContext: params.generationContext
+                ? { ...params.generationContext, sceneId: outline.id }
+                : undefined,
             },
             signal,
           );
@@ -605,7 +652,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
                 signal,
               );
               if (!ttsResult.success) {
-                if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
+                if (!isRunActive()) {
                   pausedByFailureOrAbort = true;
                   break;
                 }
@@ -618,7 +665,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             }
 
             // Epoch changed — stage switched, discard this scene
-            if (store.getState().generationEpoch !== startEpoch) {
+            if (!isRunActive()) {
               pausedByFailureOrAbort = true;
               break;
             }
@@ -628,7 +675,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             options.onSceneGenerated?.(scene, outline.order);
             previousSpeeches = actionsResult.previousSpeeches || [];
           } else {
-            if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
+            if (!isRunActive()) {
               pausedByFailureOrAbort = true;
               break;
             }
@@ -733,6 +780,10 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             stageInfo: params.stageInfo,
             agents: params.agents,
             languageDirective: params.languageDirective,
+            lessonLanguage: params.lessonLanguage ?? state.stage.lessonLanguage,
+            generationContext: params.generationContext
+              ? { ...params.generationContext, sceneId: outline.id }
+              : undefined,
           },
           signal,
         );
@@ -761,6 +812,10 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             previousSpeeches,
             userProfile: params.userProfile,
             languageDirective: params.languageDirective,
+            lessonLanguage: params.lessonLanguage ?? state.stage.lessonLanguage,
+            generationContext: params.generationContext
+              ? { ...params.generationContext, sceneId: outline.id }
+              : undefined,
           },
           signal,
         );

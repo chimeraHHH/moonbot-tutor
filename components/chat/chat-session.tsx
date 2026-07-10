@@ -303,7 +303,10 @@ export function ChatSessionComponent({
                       const i18nName = t(`settings.agentNames.${agentId}`);
                       if (i18nName !== `settings.agentNames.${agentId}`) return i18nName;
                     }
-                    return message.metadata?.senderName || t('chat.unknown');
+                    const name = message.metadata?.senderName || t('chat.unknown');
+                    return message.metadata?.personaLabel
+                      ? `${name} · ${message.metadata.personaLabel}`
+                      : name;
                   })()}
                 </span>
 

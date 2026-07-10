@@ -34,6 +34,8 @@ import { buildVideoManifestFromOutlines } from '@/lib/media/video-manifest';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
+import { resolveLessonLanguage } from '@/lib/classroom/language';
+import { createPeerAgentClassroomState } from '@/lib/classroom/peer-agents';
 
 const log = createLogger('Classroom');
 
@@ -48,6 +50,8 @@ export interface GenerateClassroomInput {
   enableVideoGeneration?: boolean;
   enableTTS?: boolean;
   agentMode?: 'default' | 'generate';
+  lessonLocale?: string;
+  uiLocale?: string;
 }
 
 export type ClassroomGenerationStep =
@@ -261,7 +265,14 @@ export async function generateClassroom(
 
   const requirements: UserRequirements = {
     requirement,
+    lessonLocale: input.lessonLocale,
+    uiLocale: input.uiLocale,
   };
+  const lessonLanguage = resolveLessonLanguage({
+    explicitLocale: input.lessonLocale,
+    userInput: requirement,
+    uiLocale: input.uiLocale,
+  });
   const vocationalActive = resolveVocationalActive(requirements);
   const pdfText = pdfContent?.text || undefined;
 
@@ -351,9 +362,7 @@ export async function generateClassroom(
   }
 
   const { languageDirective, courseTitle, outlines } = outlinesResult.data;
-  log.info(
-    `Generated ${outlines.length} scene outlines (languageDirective: ${languageDirective}, courseTitle: ${courseTitle ?? 'n/a'})`,
-  );
+  log.info(`Generated ${outlines.length} scene outlines [locale=${lessonLanguage.locale}]`);
 
   await options.onProgress?.({
     step: 'generating_outlines',
@@ -384,7 +393,9 @@ export async function generateClassroom(
     id: stageId,
     name: courseTitle || outlines[0]?.title || requirement.slice(0, 50),
     description: undefined,
-    languageDirective,
+    languageDirective: lessonLanguage.instruction,
+    lessonLanguage,
+    peerAgentState: createPeerAgentClassroomState(stageId, outlines, lessonLanguage.locale),
     videoManifest: buildVideoManifestFromOutlines(outlines),
     style: 'interactive',
     createdAt: Date.now(),
@@ -435,7 +446,9 @@ export async function generateClassroom(
     ) => {
       const nextAttempt = Math.min(event.attempt + 1, event.maxAttempts);
       const message = `Retrying scene ${index + 1}/${outlines.length} ${phase} (${nextAttempt}/${event.maxAttempts}): ${safeOutline.title}`;
-      log.warn(`${message} — ${event.reason}`);
+      log.warn(
+        `Retrying scene ${index + 1}/${outlines.length} ${phase} (${nextAttempt}/${event.maxAttempts}) — ${event.reason}`,
+      );
       await options.onProgress?.({
         step: 'generating_scenes',
         progress: Math.max(progressStart, 31),
@@ -459,11 +472,11 @@ export async function generateClassroom(
       },
     );
     if (!content) {
-      log.warn(`Skipping scene "${safeOutline.title}" — content generation failed`);
+      log.warn(`Skipping scene ${index + 1}/${outlines.length} — content generation failed`);
       continue;
     }
 
-    const actions = await withGenerationRetry(
+    const generatedActions = await withGenerationRetry(
       () =>
         generateSceneActions(safeOutline, content, sceneAiCall, {
           agents,
@@ -474,7 +487,8 @@ export async function generateClassroom(
         onRetry: (event) => reportSceneRetry('actions', event),
       },
     );
-    log.info(`Scene "${safeOutline.title}": ${actions.length} actions`);
+    const actions = generatedActions.filter((action) => action.type !== 'discussion');
+    log.info(`Scene ${index + 1}/${outlines.length}: ${actions.length} actions`);
 
     const sceneId = createSceneWithActions(safeOutline, content, actions, api);
     if (!sceneId) {

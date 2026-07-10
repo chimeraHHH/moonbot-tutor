@@ -53,6 +53,10 @@ export interface UserRequirements {
   webSearch?: boolean; // Enable web search for richer context
   interactiveMode?: boolean; // Enable Interactive Mode for interactive-first generation
   taskEngineMode?: boolean; // Enable vocational task-engine generation path
+  /** Explicit lesson-language selection made by the user, if any. */
+  lessonLocale?: string;
+  /** Current interface locale, used only after explicit choice and input detection. */
+  uiLocale?: string;
 }
 
 // ==================== Stage 1 Output: Scene Outlines (Simplified) ====================

@@ -105,6 +105,25 @@ describe('OpenAI provider defaults', () => {
     expect(model).toEqual({ endpoint: 'responses', modelId: 'gpt-5.5' });
   });
 
+  it('does not infer Responses API behavior from a custom base URL', () => {
+    const { model } = getModel({
+      providerId: 'openai',
+      modelId: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://proxy.example.test/custom/v1',
+    });
+
+    expect(openAiMock.chat).toHaveBeenCalledWith('gpt-5.4');
+    expect(openAiMock.responses).not.toHaveBeenCalled();
+    expect(openAiMock.createOpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseURL: 'https://proxy.example.test/custom/v1',
+      }),
+    );
+    expect(openAiMock.createOpenAI.mock.calls.at(-1)?.[0]).not.toHaveProperty('fetch');
+    expect(model).toEqual({ endpoint: 'chat', modelId: 'gpt-5.4' });
+  });
+
   it('includes latest official GLM and Kimi coding models', () => {
     expect(getModelInfo('glm', 'glm-5.2')).toMatchObject({
       id: 'glm-5.2',

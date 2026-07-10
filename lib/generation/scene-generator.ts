@@ -54,6 +54,7 @@ import type {
 } from './pipeline-types';
 import type { ThinkingConfig } from '@/lib/types/provider';
 import { createLogger } from '@/lib/logger';
+import { actionTextLooksLikeMissingContext } from '@/lib/classroom/generation';
 const log = createLogger('Generation');
 
 const INTERACTIVE_WIDGET_ACTIONS = [
@@ -182,17 +183,17 @@ async function generateSingleScene(
   languageDirective?: string,
 ): Promise<string | null> {
   // Step 3.1: Generate content
-  log.info(`Step 3.1: Generating content for: ${outline.title}`);
+  log.info(`Step 3.1: Generating content [type=${outline.type}]`);
   const content = await generateSceneContent(outline, aiCall, { languageDirective });
   if (!content) {
-    log.error(`Failed to generate content for: ${outline.title}`);
+    log.error(`Failed to generate content [type=${outline.type}]`);
     return null;
   }
 
   // Step 3.2: Generate Actions
-  log.info(`Step 3.2: Generating actions for: ${outline.title}`);
+  log.info(`Step 3.2: Generating actions [type=${outline.type}]`);
   const actions = await generateSceneActions(outline, content, aiCall, { languageDirective });
-  log.info(`Generated ${actions.length} actions for: ${outline.title}`);
+  log.info(`Generated ${actions.length} actions [type=${outline.type}]`);
 
   // Create complete Scene
   return createSceneWithActions(outline, content, actions, api);
@@ -223,7 +224,7 @@ function convertInteractiveConfigToWidget(outline: SceneOutline): SceneOutline {
     config.designIdea || '',
   );
 
-  log.info(`Converting interactiveConfig to widget: ${widgetType} for "${outline.title}"`);
+  log.info(`Converting interactiveConfig to widget [type=${widgetType}]`);
 
   return {
     ...outline,
@@ -324,15 +325,13 @@ export async function generateSceneContent(
   if (outline.type === 'interactive') {
     // Backward compatibility: convert legacy interactiveConfig
     if (!outline.widgetType && outline.interactiveConfig) {
-      log.info(`Converting legacy interactiveConfig for: ${outline.title}`);
+      log.info('Converting legacy interactiveConfig');
       outline = convertInteractiveConfigToWidget(outline);
     }
 
     // If still no widgetType after conversion, fallback to simulation
     if (!outline.widgetType) {
-      log.warn(
-        `Interactive outline "${outline.title}" has no widgetType, falling back to simulation`,
-      );
+      log.warn('Interactive outline has no widgetType, falling back to simulation');
       outline = {
         ...outline,
         widgetType: 'simulation' as WidgetType,
@@ -795,7 +794,7 @@ async function generateSlideContent(
     return null;
   }
 
-  log.debug(`Generating slide content for: ${outline.title}`);
+  log.debug('Generating slide content');
   if (assignedImages && assignedImages.length > 0) {
     log.debug(`Assigned images: ${assignedImages.map((img) => img.id).join(', ')}`);
   }
@@ -842,11 +841,11 @@ async function generateSlideContent(
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
   if (!generatedData || !generatedData.elements || !Array.isArray(generatedData.elements)) {
-    log.error(`Failed to parse AI response for: ${outline.title}`);
+    log.error('Failed to parse slide-content AI response');
     return null;
   }
 
-  log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
+  log.debug(`Got ${generatedData.elements.length} slide elements`);
 
   // Debug: Log image elements before resolution
   const imageElements = generatedData.elements.filter((el) => el.type === 'image');
@@ -940,16 +939,16 @@ async function generateQuizContent(
     return null;
   }
 
-  log.debug(`Generating quiz content for: ${outline.title}`);
+  log.debug('Generating quiz content');
   const response = await aiCall(prompts.system, prompts.user);
   const generatedQuestions = parseJsonResponse<QuizQuestion[]>(response);
 
   if (!generatedQuestions || !Array.isArray(generatedQuestions)) {
-    log.error(`Failed to parse AI response for: ${outline.title}`);
+    log.error('Failed to parse quiz-content AI response');
     return null;
   }
 
-  log.debug(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
+  log.debug(`Got ${generatedQuestions.length} quiz questions`);
 
   // Ensure each question has an ID and normalize options format
   const questions: QuizQuestion[] = generatedQuestions.map((q) => {
@@ -1035,19 +1034,17 @@ async function generatePBLSceneContent(
 
   const pblConfig = outline.pblConfig;
   if (!pblConfig) {
-    log.error(`PBL outline "${outline.title}" missing pblConfig`);
+    log.error('PBL outline missing pblConfig');
     return null;
   }
 
-  log.info(`Generating PBL content for: ${outline.title}`);
+  log.info('Generating PBL content');
 
   const v2Disabled = process.env.PBL_V2_DISABLED === 'true';
   const scenarioRoleplay = pblConfig.scenarioRoleplay === true;
 
   if (v2Disabled && scenarioRoleplay) {
-    log.error(
-      `PBL scenario role-play requested for "${outline.title}" but PBL v2 is disabled; refusing to generate legacy ordinary PBL.`,
-    );
+    log.error('PBL scenario role-play requested but PBL v2 is disabled; refusing legacy fallback.');
     return null;
   }
 
@@ -1109,9 +1106,7 @@ async function generatePBLSceneContent(
       }
     }
     if (scenarioRoleplay) {
-      log.error(
-        `PBL v2 scenario generation failed for "${outline.title}"; refusing to fall back to legacy ordinary PBL.`,
-      );
+      log.error('PBL v2 scenario generation failed; refusing to fall back to legacy ordinary PBL.');
       return null;
     }
 
@@ -1269,7 +1264,7 @@ export async function generateWidgetContent(
 
     case 'procedural-skill':
       if (!options.allowProceduralSkill) {
-        log.warn(`Procedural-skill widget "${outline.title}" is not enabled`);
+        log.warn('Procedural-skill widget is not enabled');
         return null;
       }
       promptId = PROMPT_IDS.PROCEDURAL_SKILL_CONTENT;
@@ -1294,16 +1289,16 @@ export async function generateWidgetContent(
 
   const prompts = buildPrompt(promptId, variables);
   if (!prompts) {
-    log.error(`Failed to build ${widgetType} prompt for: ${outline.title}`);
+    log.error(`Failed to build ${widgetType} prompt`);
     return null;
   }
 
-  log.info(`Generating ${widgetType} widget for: ${outline.title}`);
+  log.info(`Generating ${widgetType} widget`);
   const response = await aiCall(prompts.system, prompts.user);
   const html = extractHtml(response);
 
   if (!html) {
-    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    log.error(`Failed to extract HTML from ${widgetType} response`);
     return null;
   }
 
@@ -1353,7 +1348,7 @@ export async function generateSceneActions(
   if (outline.type === 'interactive') {
     const hasHtml = 'html' in content;
     log.info(
-      `[Actions Gen] Interactive "${outline.title}": hasHtml=${hasHtml}, widgetType=${hasHtml ? content.widgetType : 'N/A'}`,
+      `[Actions Gen] Interactive: hasHtml=${hasHtml}, widgetType=${hasHtml ? content.widgetType : 'N/A'}`,
     );
   }
 
@@ -1373,7 +1368,7 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultSlideActions(outline, content.elements);
+      return generateDefaultSlideActions(outline, content.elements, languageDirective);
     }
 
     const response = await aiCall(prompts.system, prompts.user);
@@ -1381,10 +1376,13 @@ export async function generateSceneActions(
 
     if (actions.length > 0) {
       // Validate and fill in Action IDs
-      return processActions(actions, content.elements, agents);
+      const processed = processActions(actions, content.elements, agents).filter(
+        (action) => action.type !== 'speech' || !actionTextLooksLikeMissingContext(action.text),
+      );
+      if (processed.length > 0) return processed;
     }
 
-    return generateDefaultSlideActions(outline, content.elements);
+    return generateDefaultSlideActions(outline, content.elements, languageDirective);
   }
 
   if (outline.type === 'quiz' && 'questions' in content) {
@@ -1402,17 +1400,20 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultQuizActions(outline);
+      return generateDefaultQuizActions(outline, languageDirective);
     }
 
     const response = await aiCall(prompts.system, prompts.user);
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
     if (actions.length > 0) {
-      return processActions(actions, [], agents);
+      const processed = processActions(actions, [], agents).filter(
+        (action) => action.type !== 'speech' || !actionTextLooksLikeMissingContext(action.text),
+      );
+      if (processed.length > 0) return processed;
     }
 
-    return generateDefaultQuizActions(outline);
+    return generateDefaultQuizActions(outline, languageDirective);
   }
 
   if (outline.type === 'interactive' && 'html' in content) {
@@ -1432,7 +1433,7 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultInteractiveActions(outline);
+      return generateDefaultInteractiveActions(outline, languageDirective);
     }
 
     const response = await aiCall(prompts.system, prompts.user);
@@ -1443,10 +1444,13 @@ export async function generateSceneActions(
     );
 
     if (actions.length > 0) {
-      return processActions(actions, [], agents);
+      const processed = processActions(actions, [], agents).filter(
+        (action) => action.type !== 'speech' || !actionTextLooksLikeMissingContext(action.text),
+      );
+      if (processed.length > 0) return processed;
     }
 
-    return generateDefaultInteractiveActions(outline);
+    return generateDefaultInteractiveActions(outline, languageDirective);
   }
 
   if (outline.type === 'pbl' && 'projectConfig' in content) {
@@ -1464,17 +1468,20 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultPBLActions(outline);
+      return generateDefaultPBLActions(outline, languageDirective);
     }
 
     const response = await aiCall(prompts.system, prompts.user);
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
     if (actions.length > 0) {
-      return processActions(actions, [], agents);
+      const processed = processActions(actions, [], agents).filter(
+        (action) => action.type !== 'speech' || !actionTextLooksLikeMissingContext(action.text),
+      );
+      if (processed.length > 0) return processed;
     }
 
-    return generateDefaultPBLActions(outline);
+    return generateDefaultPBLActions(outline, languageDirective);
   }
 
   return [];
@@ -1483,13 +1490,17 @@ export async function generateSceneActions(
 /**
  * Generate default PBL Actions (fallback)
  */
-function generateDefaultPBLActions(_outline: SceneOutline): Action[] {
+function usesChinese(directive?: string): boolean {
+  return /[一-鿿]|zh-CN|zh-TW|Chinese/i.test(directive || '');
+}
+
+function generateDefaultPBLActions(outline: SceneOutline, _languageDirective?: string): Action[] {
   return [
     {
       id: `action_${nanoid(8)}`,
       type: 'speech',
-      title: 'PBL 项目介绍',
-      text: '现在让我们开始一个项目式学习活动。请选择你的角色，查看任务看板，开始协作完成项目。',
+      title: outline.title,
+      text: outline.description || outline.title,
     },
   ];
 }
@@ -1589,7 +1600,12 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
 /**
  * Generate default slide Actions (fallback)
  */
-function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement[]): Action[] {
+function generateDefaultSlideActions(
+  outline: SceneOutline,
+  elements: PPTElement[],
+  languageDirective?: string,
+): Action[] {
+  const chinese = usesChinese(languageDirective);
   const actions: Action[] = [];
 
   // Add spotlight for text elements
@@ -1598,19 +1614,19 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
     actions.push({
       id: `action_${nanoid(8)}`,
       type: 'spotlight',
-      title: '聚焦重点',
+      title: outline.title,
       elementId: textElements[0].id,
     });
   }
 
   // Add opening speech based on key points
   const speechText = outline.keyPoints?.length
-    ? outline.keyPoints.join('。') + '。'
+    ? outline.keyPoints.join(chinese ? '。' : '. ') + (chinese ? '。' : '.')
     : outline.description || outline.title;
   actions.push({
     id: `action_${nanoid(8)}`,
     type: 'speech',
-    title: '场景讲解',
+    title: outline.title,
     text: speechText,
   });
 
@@ -1620,13 +1636,13 @@ function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement
 /**
  * Generate default quiz Actions (fallback)
  */
-function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
+function generateDefaultQuizActions(outline: SceneOutline, _languageDirective?: string): Action[] {
   return [
     {
       id: `action_${nanoid(8)}`,
       type: 'speech',
-      title: '测验引导',
-      text: '现在让我们来做一个小测验，检验一下学习成果。',
+      title: outline.title,
+      text: outline.description || outline.title,
     },
   ];
 }
@@ -1634,13 +1650,16 @@ function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
 /**
  * Generate default interactive Actions (fallback)
  */
-function generateDefaultInteractiveActions(_outline: SceneOutline): Action[] {
+function generateDefaultInteractiveActions(
+  outline: SceneOutline,
+  _languageDirective?: string,
+): Action[] {
   return [
     {
       id: `action_${nanoid(8)}`,
       type: 'speech',
-      title: '交互引导',
-      text: '现在让我们通过交互式可视化来探索这个概念。请尝试操作页面中的元素，观察变化。',
+      title: outline.title,
+      text: outline.description || outline.title,
     },
   ];
 }

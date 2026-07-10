@@ -12,6 +12,9 @@ import {
 import { createSelectors } from '@/lib/utils/create-selectors';
 import type { ChatSession } from '@/lib/types/chat';
 import type { SceneOutline } from '@/lib/types/generation';
+import type { PeerAgentClassroomState } from '@/lib/classroom/peer-agents';
+import { resolveLessonLanguage } from '@/lib/classroom/language';
+import { isSameGeneration, traceGeneration } from '@/lib/classroom/generation';
 import { createLogger } from '@/lib/logger';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { migrateScene } from '@/lib/edit/slide-schema';
@@ -107,6 +110,7 @@ interface StageState {
   setMode: (mode: StageMode) => void;
   setToolbarState: (state: ToolbarState) => void;
   setStageAgents: (configs: GeneratedAgentConfig[]) => void;
+  setPeerAgentState: (state: PeerAgentClassroomState) => void;
   setGeneratingOutlines: (outlines: SceneOutline[]) => void;
   setOutlines: (outlines: SceneOutline[]) => void;
   setGenerationComplete: (complete: boolean) => void;
@@ -148,8 +152,15 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
 
   // Actions
   setStage: (stage) => {
+    const lessonLanguage =
+      stage.lessonLanguage ?? resolveLessonLanguage({ userInput: stage.languageDirective });
+    const normalizedStage = {
+      ...stage,
+      lessonLanguage,
+      languageDirective: lessonLanguage.instruction,
+    };
     set((s) => ({
-      stage,
+      stage: normalizedStage,
       scenes: [],
       currentSceneId: null,
       chats: [],
@@ -179,6 +190,16 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       log.warn(
         `Ignoring scene "${scene.title}" - stageId mismatch (scene: ${scene.stageId}, current: ${currentStage?.id})`,
       );
+      return;
+    }
+    if (
+      currentStage.generationContext &&
+      (scene.generationId !== currentStage.generationContext.generationId ||
+        scene.sessionId !== currentStage.generationContext.sessionId)
+    ) {
+      traceGeneration(currentStage.generationContext, 'scene.write.discarded', {
+        sceneId: scene.id,
+      });
       return;
     }
     const scenes = [...get().scenes, migrateScene(scene)];
@@ -291,6 +312,13 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     debouncedSaveAgents();
   },
 
+  setPeerAgentState: (peerAgentState) => {
+    const stage = get().stage;
+    if (!stage) return;
+    set({ stage: { ...stage, peerAgentState } });
+    debouncedSave();
+  },
+
   setGeneratingOutlines: (generatingOutlines) => set({ generatingOutlines }),
 
   setOutlines: (outlines) => {
@@ -300,7 +328,16 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     const stageId = get().stage?.id;
     if (stageId) {
       const generationComplete = get().generationComplete;
+      const generationContext = get().stage?.generationContext;
       import('@/lib/utils/database').then(({ db }) => {
+        const currentStage = get().stage;
+        if (
+          currentStage?.id !== stageId ||
+          (generationContext && !isSameGeneration(currentStage.generationContext, generationContext))
+        ) {
+          traceGeneration(generationContext, 'outlines.write.discarded');
+          return;
+        }
         db.stageOutlines.put({
           stageId,
           outlines,
@@ -318,6 +355,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     const stageId = get().stage?.id;
     if (stageId) {
       const outlines = get().outlines;
+      const generationContext = get().stage?.generationContext;
       // Flush the current scenes BEFORE recording completion, and only record
       // it once that flush is verified. Scenes save through a 500ms debounce,
       // so writing the flag eagerly could let a reload see
@@ -328,6 +366,14 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         .saveToStorage()
         .then((saved) => {
           if (!saved) return;
+          const currentStage = get().stage;
+          if (
+            currentStage?.id !== stageId ||
+            (generationContext && !isSameGeneration(currentStage.generationContext, generationContext))
+          ) {
+            traceGeneration(generationContext, 'completion.write.discarded');
+            return;
+          }
           return import('@/lib/utils/database').then(({ db }) => {
             db.stageOutlines.put({
               stageId,
@@ -421,6 +467,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         log.info('Stage already loaded in memory, skipping IndexedDB load:', stageId);
         return;
       }
+      const loadEpoch = currentState.generationEpoch;
 
       const { loadStageData } = await import('@/lib/utils/stage-storage');
       const data = await loadStageData(stageId);
@@ -430,6 +477,12 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       const outlinesRecord = await db.stageOutlines.get(stageId);
       const outlines = outlinesRecord?.outlines || [];
       const persistedComplete = outlinesRecord?.generationComplete ?? false;
+
+      // A route switch or a newly-created in-memory classroom invalidates this read.
+      if (get().generationEpoch !== loadEpoch) {
+        traceGeneration(data?.stage.generationContext, 'classroom.restore.discarded');
+        return;
+      }
 
       if (data) {
         // Normalize legacy slide content (missing schemaVersion) at the load
@@ -462,7 +515,16 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         }
 
         set({
-          stage: data.stage,
+          stage: (() => {
+            const lessonLanguage =
+              data.stage.lessonLanguage ??
+              resolveLessonLanguage({ userInput: data.stage.languageDirective });
+            return {
+              ...data.stage,
+              lessonLanguage,
+              languageDirective: lessonLanguage.instruction,
+            };
+          })(),
           scenes: migrated,
           currentSceneId: data.currentSceneId,
           chats: data.chats,
@@ -482,6 +544,9 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
           // mode='edit'. Refresh already reset via initial store value;
           // this normalises the SPA path to match.
           mode: 'playback',
+          generationEpoch: loadEpoch + 1,
+          generationStatus: generationComplete ? 'completed' : 'idle',
+          failedOutlines: [],
         });
         log.info('Loaded from storage:', stageId);
       } else {

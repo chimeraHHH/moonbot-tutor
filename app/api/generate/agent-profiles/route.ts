@@ -42,7 +42,6 @@ function stripCodeFences(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  let stageName: string | undefined;
   let modelString: string | undefined;
   try {
     const body = (await req.json()) as RequestBody;
@@ -54,7 +53,6 @@ export async function POST(req: NextRequest) {
       avatarDescriptions,
       availableVoices,
     } = body;
-    stageName = stageInfo?.name;
 
     // ── Validate required fields ──
     if (!stageInfo?.name) {
@@ -150,7 +148,7 @@ Return a JSON object with this exact structure:
   ]
 }`;
 
-    log.info(`Generating agent profiles for "${stageInfo.name}" [model=${modelString}]`);
+    log.info(`Generating agent profiles [model=${modelString}]`);
 
     const rawResult = (
       await callLLM(
@@ -234,14 +232,11 @@ Return a JSON object with this exact structure:
       };
     });
 
-    log.info(`Successfully generated ${agents.length} agent profiles for "${stageInfo.name}"`);
+    log.info(`Successfully generated ${agents.length} agent profiles`);
 
     return apiSuccess({ agents });
   } catch (error) {
-    log.error(
-      `Agent profiles generation failed [stage="${stageName ?? 'unknown'}", model=${modelString ?? 'unknown'}]:`,
-      error,
-    );
+    log.error(`Agent profiles generation failed [model=${modelString ?? 'unknown'}]:`, error);
     return apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error));
   }
 }

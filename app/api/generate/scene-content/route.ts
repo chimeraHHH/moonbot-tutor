@@ -25,6 +25,14 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { llmApiError } from '@/lib/server/llm-error-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { resolveVocationalActive } from '@/lib/config/feature-flags';
+import { coerceLessonLanguage } from '@/lib/classroom/language';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import {
+  isGenerationContextValid,
+  slideContentLooksLikePromptLeak,
+  traceGeneration,
+  type GenerationContext,
+} from '@/lib/classroom/generation';
 
 const log = createLogger('Scene Content API');
 
@@ -44,7 +52,9 @@ export async function POST(req: NextRequest) {
       stageId,
       agents,
       languageDirective,
+      lessonLanguage: incomingLessonLanguage,
       requirements,
+      generationContext,
     } = body as {
       outline: SceneOutline;
       allOutlines: SceneOutline[];
@@ -58,8 +68,14 @@ export async function POST(req: NextRequest) {
       stageId: string;
       agents?: AgentInfo[];
       languageDirective?: string;
+      lessonLanguage?: LessonLanguage;
       requirements?: UserRequirements;
+      generationContext?: GenerationContext;
     };
+    const lessonLanguage = incomingLessonLanguage
+      ? coerceLessonLanguage(incomingLessonLanguage)
+      : undefined;
+    const effectiveLanguageDirective = lessonLanguage?.instruction || languageDirective;
 
     // Validate required fields
     if (!rawOutline) {
@@ -75,6 +91,17 @@ export async function POST(req: NextRequest) {
     if (!stageId) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'stageId is required');
     }
+    if (
+      generationContext &&
+      !isGenerationContextValid(generationContext, {
+        classroomId: stageId,
+        sceneId: rawOutline.id,
+        topic: requirements?.requirement,
+      })
+    ) {
+      return apiError('INVALID_REQUEST', 409, 'Stale or mismatched scene-content request');
+    }
+    traceGeneration(generationContext, 'scene-content.request');
 
     const outline: SceneOutline = { ...rawOutline };
 
@@ -159,11 +186,7 @@ export async function POST(req: NextRequest) {
     const generatedMediaMapping: ImageMapping = {};
 
     // ── Generate content ──
-    log.info(
-      `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
-    );
-
-    const userLocale = req.headers?.get('x-user-locale') ?? '';
+    log.info(`Generating scene content [type=${effectiveOutline.type}, model=${modelString}]`);
 
     const content = await generateSceneContent(effectiveOutline, aiCall, {
       assignedImages,
@@ -172,15 +195,15 @@ export async function POST(req: NextRequest) {
       visionEnabled: hasVision,
       generatedMediaMapping,
       agents,
-      languageDirective,
+      languageDirective: effectiveLanguageDirective,
       thinkingConfig,
-      targetLanguage: userLocale || undefined,
+      targetLanguage: lessonLanguage?.locale,
       userRequirements: requirements,
       allowProceduralSkill: vocationalActive,
     });
 
     if (!content) {
-      log.error(`Failed to generate content for: "${effectiveOutline.title}"`);
+      log.error(`Failed to generate scene content [type=${effectiveOutline.type}]`);
 
       return apiError(
         'GENERATION_FAILED',
@@ -189,12 +212,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    log.info(`Content generated successfully: "${effectiveOutline.title}"`);
+    if ('elements' in content && slideContentLooksLikePromptLeak(content.elements)) {
+      traceGeneration(generationContext, 'scene-content.prompt-leak-rejected');
+      return apiError(
+        'GENERATION_FAILED',
+        422,
+        'Generated slide copied prompt instructions instead of the requested topic',
+      );
+    }
 
-    return apiSuccess({ content, effectiveOutline });
+    log.info(`Scene content generated [type=${effectiveOutline.type}]`);
+
+    traceGeneration(generationContext, 'scene-content.complete');
+    return apiSuccess({ content, effectiveOutline, generationContext });
   } catch (error) {
     log.error(
-      `Scene content generation failed [scene="${outlineTitle ?? 'unknown'}", model=${resolvedModelString ?? 'unknown'}]:`,
+      `Scene content generation failed [hasScene=${Boolean(outlineTitle)}, model=${resolvedModelString ?? 'unknown'}]:`,
       error,
     );
     return llmApiError(error);

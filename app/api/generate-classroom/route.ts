@@ -13,10 +13,8 @@ const log = createLogger('GenerateClassroom API');
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  let requirementSnippet: string | undefined;
   try {
     const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
-    requirementSnippet = rawBody.requirement?.substring(0, 60);
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),
@@ -33,6 +31,8 @@ export async function POST(req: NextRequest) {
         : {}),
       ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
+      ...(rawBody.lessonLocale ? { lessonLocale: rawBody.lessonLocale } : {}),
+      ...(rawBody.uiLocale ? { uiLocale: rawBody.uiLocale } : {}),
     };
     const { requirement } = body;
 
@@ -60,10 +60,7 @@ export async function POST(req: NextRequest) {
       202,
     );
   } catch (error) {
-    log.error(
-      `Classroom generation job creation failed [requirement="${requirementSnippet ?? 'unknown'}..."]:`,
-      error,
-    );
+    log.error('Classroom generation job creation failed:', error);
     return apiError(
       'INTERNAL_ERROR',
       500,

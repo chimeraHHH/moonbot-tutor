@@ -10,11 +10,18 @@
 // `Scene` is re-exported as an alias of the app's fully-instantiated
 // `Scene<Action, AppSceneContent>`, so existing `import { Scene }` callers keep
 // the same semantics (actions are `Action[]`, content spans all four kinds).
-import type { Scene as DslScene, SceneContent as DslSceneContent } from '@openmaic/dsl';
+import type {
+  Scene as DslScene,
+  SceneContent as DslSceneContent,
+  Stage as DslStage,
+} from '@openmaic/dsl';
 import type { Action } from '@/lib/types/action';
 import type { WidgetType, WidgetConfig } from '@/lib/types/widgets';
 import type { PBLProjectConfig } from '@/lib/pbl/types';
 import type { PBLProjectV2 } from '@/lib/pbl/v2/types';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import type { PeerAgentClassroomState } from '@/lib/classroom/peer-agents';
+import type { GenerationContext } from '@/lib/classroom/generation';
 
 export type {
   SceneType,
@@ -24,12 +31,20 @@ export type {
   VideoManifest,
   GeneratedAgentConfig,
   MultiAgentConfig,
-  Stage,
   SlideContent,
   QuizOption,
   QuizQuestion,
   QuizContent,
 } from '@openmaic/dsl';
+
+export type Stage = DslStage & {
+  /** Authoritative content language for the lifetime of this classroom. */
+  lessonLanguage?: LessonLanguage;
+  /** Persisted lightweight peer-student roster and two-message schedule. */
+  peerAgentState?: PeerAgentClassroomState;
+  /** Immutable identity and source topic for the generation that owns this classroom. */
+  generationContext?: GenerationContext;
+};
 
 // The two discriminant guards are runtime functions, so they must be value
 // re-exported — a bare `export type {}` erases them and leaves the import as
@@ -113,6 +128,9 @@ export type AppScene = DslScene<Action, SceneContent> & {
    * scene-derived outline.
    */
   outlineId?: string;
+  /** Generation owner copied onto generated scenes for stale-write rejection. */
+  generationId?: string;
+  sessionId?: string;
 };
 export type Scene = AppScene;
 

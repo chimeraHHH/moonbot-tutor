@@ -48,6 +48,8 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
       createdAt: data.stage.createdAt || now,
       updatedAt: now,
       languageDirective: data.stage.languageDirective,
+      lessonLanguage: data.stage.lessonLanguage,
+      peerAgentState: data.stage.peerAgentState,
       style: data.stage.style,
       currentSceneId: data.currentSceneId || undefined,
       agentIds: data.stage.agentIds,
@@ -55,6 +57,7 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
       interactiveMode: data.stage.interactiveMode,
       taskEngineMode: data.stage.taskEngineMode,
       generatedAgentConfigs: data.stage.generatedAgentConfigs,
+      generationContext: data.stage.generationContext,
     });
 
     // Delete old scenes first to avoid orphaned data

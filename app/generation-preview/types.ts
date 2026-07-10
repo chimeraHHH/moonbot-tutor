@@ -6,10 +6,11 @@ import type {
   PdfImage,
   ImageMapping,
 } from '@/lib/types/generation';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import type { GenerationIdentity } from '@/lib/classroom/generation';
 
 // Session state stored in sessionStorage
-export interface GenerationSessionState {
-  sessionId: string;
+export interface GenerationSessionState extends GenerationIdentity {
   requirements: UserRequirements;
   pdfText: string;
   pdfImages?: PdfImage[];
@@ -29,6 +30,8 @@ export interface GenerationSessionState {
   researchSources?: Array<{ title: string; url: string }>;
   // Language directive inferred from outline generation
   languageDirective?: string;
+  /** Resolved once at lesson creation and persisted into the classroom. */
+  lessonLanguage?: LessonLanguage;
   // Concise course title inferred from outline generation (used as the stage name)
   courseTitle?: string;
   // Server-effective vocational mode from the outline generation done event.

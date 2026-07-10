@@ -9,6 +9,7 @@ import type { PBLProjectConfig, PBLChatMessage, PBLAgent, PBLIssue } from '@/lib
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { createLogger } from '@/lib/logger';
+import { useStageStore } from '@/lib/store';
 
 const log = createLogger('PBLChat');
 
@@ -21,6 +22,7 @@ interface UsePBLChatOptions {
 export function usePBLChat({ projectConfig, userRole, onConfigUpdate }: UsePBLChatOptions) {
   const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
+  const lessonLanguage = useStageStore((state) => state.stage?.lessonLanguage);
 
   const messages = projectConfig.chat.messages;
 
@@ -83,6 +85,7 @@ export function usePBLChat({ projectConfig, userRole, onConfigUpdate }: UsePBLCh
             })),
             userRole,
             agentType: isJudgeAgent ? 'judge' : 'question',
+            lessonLanguage,
           }),
         });
 
@@ -121,7 +124,7 @@ export function usePBLChat({ projectConfig, userRole, onConfigUpdate }: UsePBLCh
         setIsLoading(false);
       }
     },
-    [projectConfig, userRole, currentIssue, isLoading, onConfigUpdate, t],
+    [projectConfig, userRole, currentIssue, isLoading, onConfigUpdate, t, lessonLanguage],
   );
 
   return { messages, isLoading, sendMessage, currentIssue };

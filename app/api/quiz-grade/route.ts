@@ -10,6 +10,7 @@ import { callLLM } from '@/lib/ai/llm';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { buildLanguageInstruction, normalizeLessonLocale } from '@/lib/classroom/language';
 const log = createLogger('Quiz Grade');
 
 interface GradeRequest {
@@ -26,12 +27,10 @@ interface GradeResponse {
 }
 
 export async function POST(req: NextRequest) {
-  let questionSnippet: string | undefined;
   let resolvedPoints: number | undefined;
   try {
     const body = (await req.json()) as GradeRequest;
     const { question, userAnswer, points, commentPrompt, language } = body;
-    questionSnippet = question?.substring(0, 60);
     resolvedPoints = points;
 
     if (!question || !userAnswer) {
@@ -50,13 +49,16 @@ export async function POST(req: NextRequest) {
       'quiz-grade',
     );
 
-    const isZh = language === 'zh-CN';
+    const locale = normalizeLessonLocale(language) || 'zh-CN';
+    const isZh = locale.startsWith('zh');
+    const languageInstruction = buildLanguageInstruction(locale);
 
     const systemPrompt = isZh
       ? `你是一位专业的教育评估专家。请根据题目和学生答案进行评分并给出简短评语。
 必须以如下 JSON 格式回复（不要包含其他内容）：
 {"score": <0到${points}的整数>, "comment": "<一两句评语>"}`
       : `You are a professional educational assessor. Grade the student's answer and provide brief feedback.
+${languageInstruction}
 You must reply in the following JSON format only (no other content):
 {"score": <integer from 0 to ${points}>, "comment": "<one or two sentences of feedback>"}`;
 
@@ -104,10 +106,7 @@ ${commentPrompt ? `Grading guidance: ${commentPrompt}\n` : ''}Student answer: ${
 
     return apiSuccess({ ...gradeResult });
   } catch (error) {
-    log.error(
-      `Quiz grading failed [question="${questionSnippet ?? 'unknown'}...", points=${resolvedPoints ?? 'unknown'}]:`,
-      error,
-    );
+    log.error(`Quiz grading failed [points=${resolvedPoints ?? 'unknown'}]:`, error);
     return apiError('INTERNAL_ERROR', 500, 'Failed to grade answer');
   }
 }

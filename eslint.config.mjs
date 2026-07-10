@@ -31,6 +31,9 @@ const eslintConfig = defineConfig([
     '.worktrees/**',
     // Playwright e2e tests (not React code):
     'e2e/**',
+    // Python virtual envs (services/code2video/.venv/**, etc.):
+    '**/.venv/**',
+    '**/venv/**',
   ]),
   {
     rules: {

@@ -29,6 +29,11 @@ from manim_voiceover.services.base import (
 import edge_tts
 
 RATE = os.getenv("C2V_TTS_RATE", "+0%")
+# edge-tts talks to speech.platform.bing.com; from restricted networks (e.g. mainland
+# China) the connection is reset, which breaks manim-voiceover mid-render. Honor
+# HTTPS_PROXY / HTTP_PROXY so the same proxy used for other outbound traffic
+# (Vertex, etc.) also carries the TTS websocket.
+EDGE_TTS_PROXY = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or None
 DOUBAO_KEY = os.getenv("C2V_TTS_DOUBAO_KEY", "")  # "appId:accessKey"
 DOUBAO_URL = os.getenv(
     "C2V_TTS_DOUBAO_URL", "https://openspeech.bytedance.com/api/v3/tts"
@@ -70,7 +75,7 @@ class EdgeTTSService(SpeechService):
         out = str(Path(cache_dir) / audio_path)
 
         async def _save() -> None:
-            await edge_tts.Communicate(input_text, self.voice, rate=self.rate).save(out)
+            await edge_tts.Communicate(input_text, self.voice, rate=self.rate, proxy=EDGE_TTS_PROXY).save(out)
 
         asyncio.run(_save())
 
@@ -115,7 +120,7 @@ class DoubaoTTSService(SpeechService):
             print(f"[teaching_scene] Doubao TTS failed ({e}); falling back to edge-tts")
 
             async def _save() -> None:
-                await edge_tts.Communicate(input_text, "zh-CN-XiaoxiaoNeural", rate=RATE).save(str(out))
+                await edge_tts.Communicate(input_text, "zh-CN-XiaoxiaoNeural", rate=RATE, proxy=EDGE_TTS_PROXY).save(str(out))
 
             asyncio.run(_save())
         return {"input_text": text, "input_data": input_data, "original_audio": audio_path}

@@ -28,6 +28,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createVertex } from '@ai-sdk/google-vertex/edge';
 import { wrapLanguageModel, extractReasoningMiddleware } from 'ai';
 import { wrapResponseWithReasoning } from './reasoning-sse';
 import type { LanguageModel } from 'ai';
@@ -1631,14 +1632,17 @@ export function getModel(config: ModelConfig): ModelWithInfo {
     }
 
     case 'google': {
-      const googleOptions: Parameters<typeof createGoogleGenerativeAI>[0] = {
-        apiKey: effectiveApiKey,
-        baseURL: effectiveBaseUrl,
-      };
-      if (config.proxy) {
-        const proxy = config.proxy;
+      // Vertex mode: activated when GOOGLE_VERTEX_PROJECT is set. Uses
+      // @ai-sdk/google-vertex/edge (API-key / Express auth). Otherwise falls
+      // back to AI Studio via @ai-sdk/google.
+      const vertexProject =
+        typeof process !== 'undefined' ? process.env.GOOGLE_VERTEX_PROJECT : undefined;
+      const vertexLocation =
+        typeof process !== 'undefined' ? process.env.GOOGLE_VERTEX_LOCATION : undefined;
+
+      const buildProxyFetch = (proxyUrl: string) => {
         let agent: unknown;
-        googleOptions.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        return (async (input: RequestInfo | URL, init?: RequestInit) => {
           const { ProxyAgent, fetch: undiciFetch } = (await import(
             /* webpackIgnore: true */ 'undici'
           )) as {
@@ -1648,14 +1652,42 @@ export function getModel(config: ModelConfig): ModelWithInfo {
               init?: Record<string, unknown>,
             ) => Promise<unknown>;
           };
-          agent ??= new ProxyAgent(proxy);
+          agent ??= new ProxyAgent(proxyUrl);
           const response = await undiciFetch(input, {
             ...(init as Record<string, unknown>),
             dispatcher: agent,
           });
           return response as Response;
         }) as typeof fetch;
+      };
+
+      // Effective proxy: explicit config.proxy > env HTTPS_PROXY/HTTP_PROXY
+      const envProxy =
+        typeof process !== 'undefined'
+          ? process.env.https_proxy ||
+            process.env.HTTPS_PROXY ||
+            process.env.http_proxy ||
+            process.env.HTTP_PROXY
+          : undefined;
+      const effectiveProxy = config.proxy || envProxy;
+
+      if (vertexProject && typeof window === 'undefined') {
+        const vertexOptions: Parameters<typeof createVertex>[0] = {
+          apiKey: effectiveApiKey,
+          project: vertexProject,
+          location: vertexLocation || 'global',
+        };
+        if (effectiveProxy) vertexOptions.fetch = buildProxyFetch(effectiveProxy);
+        const vertex = createVertex(vertexOptions);
+        model = vertex.languageModel(config.modelId);
+        break;
       }
+
+      const googleOptions: Parameters<typeof createGoogleGenerativeAI>[0] = {
+        apiKey: effectiveApiKey,
+        baseURL: effectiveBaseUrl,
+      };
+      if (effectiveProxy) googleOptions.fetch = buildProxyFetch(effectiveProxy);
       const google = createGoogleGenerativeAI(googleOptions);
       model = google.chat(config.modelId);
       break;

@@ -141,10 +141,9 @@ export function buildVisionUserContent(
  * Used by scene content and action generators to inject into prompt templates.
  */
 export function buildLanguageText(directive?: string, sceneNote?: string): string {
-  if (!directive && !sceneNote) return '';
-  let text = directive || '';
-  if (sceneNote) {
-    text += (text ? '\n\n' : '') + `Additional language note for this scene: ${sceneNote}`;
-  }
-  return text;
+  // The course-level directive is authoritative. Older outlines may carry a
+  // model-inferred per-scene languageNote that conflicts with the classroom
+  // language; use it only for legacy calls that have no course directive.
+  if (directive?.trim()) return directive.trim();
+  return sceneNote?.trim() || '';
 }

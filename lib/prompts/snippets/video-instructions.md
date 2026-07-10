@@ -12,13 +12,13 @@ Use video generation only for slide scenes where motion is essential to understa
 - **Cross-scene reuse**: To reuse a generated video in a different scene, reference the same `elementId` in the later scene's content without adding a new `mediaGenerations` entry. Only the scene that first defines the `elementId` in its `mediaGenerations` should include the generation request
 - Use video for content that benefits from motion or animation: physical processes, step-by-step demonstrations, biological movements, chemical reactions, mechanical operations
 
-Video example:
+Video example (this example is intentionally topic-neutral — do NOT copy the placeholder text; describe the current lesson's actual subject):
 
 ```json
 "mediaGenerations": [
   {
     "type": "video",
-    "prompt": "A smooth animation showing water molecules evaporating from the ocean surface, rising into the atmosphere, and forming clouds",
+    "prompt": "<describe a short animation that visually illustrates the current lesson topic and key points; do not reuse this placeholder>",
     "elementId": "gen_vid_1",
     "aspectRatio": "16:9"
   }

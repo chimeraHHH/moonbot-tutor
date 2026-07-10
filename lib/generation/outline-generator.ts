@@ -17,6 +17,8 @@ import { parseJsonResponse } from './json-repair';
 import { uniquifyMediaElementIds } from './scene-builder';
 import type { AICallFn, GenerationResult, GenerationCallbacks } from './pipeline-types';
 import { createLogger } from '@/lib/logger';
+import { resolveLessonLanguage } from '@/lib/classroom/language';
+import { buildAuthoritativeTopicInstruction } from '@/lib/classroom/generation';
 const log = createLogger('Generation');
 
 /**
@@ -26,7 +28,7 @@ const log = createLogger('Generation');
  * language rather than defaulting to the training-distribution prior.
  */
 export const DEFAULT_LANGUAGE_DIRECTIVE =
-  'Teach in the language that matches the user requirement.';
+  '整堂课使用简体中文生成教学内容，专有名词、公式和编程标识符可保留英文。';
 
 /**
  * Generate scene outlines from user requirements
@@ -49,6 +51,11 @@ export async function generateSceneOutlinesFromRequirements(
 ): Promise<
   GenerationResult<{ languageDirective: string; courseTitle?: string; outlines: SceneOutline[] }>
 > {
+  const lessonLanguage = resolveLessonLanguage({
+    explicitLocale: requirements.lessonLocale,
+    userInput: requirements.requirement,
+    uiLocale: requirements.uiLocale,
+  });
   // Build available images description for the prompt
   let availableImagesText = 'No images available';
   let visionImages: Array<{ id: string; src: string }> | undefined;
@@ -121,7 +128,11 @@ export async function generateSceneOutlinesFromRequirements(
       totalScenes: 0,
     });
 
-    const response = await aiCall(prompts.system, prompts.user, visionImages);
+    const response = await aiCall(
+      `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
+      prompts.user,
+      visionImages,
+    );
     const parsed = parseJsonResponse<
       { languageDirective: string; courseTitle?: string; outlines: SceneOutline[] } | SceneOutline[]
     >(response);
@@ -132,10 +143,10 @@ export async function generateSceneOutlinesFromRequirements(
 
     if (Array.isArray(parsed)) {
       // Fallback: LLM returned old flat array format
-      languageDirective = DEFAULT_LANGUAGE_DIRECTIVE;
+      languageDirective = lessonLanguage.instruction;
       rawOutlines = parsed;
     } else if (parsed && parsed.outlines) {
-      languageDirective = parsed.languageDirective || DEFAULT_LANGUAGE_DIRECTIVE;
+      languageDirective = lessonLanguage.instruction;
       // courseTitle is optional — only honor a non-empty string, and cap its
       // length defensively (the prompt asks for ≤30 chars, but older/hallucinating
       // models may return far more). The downstream Stage.name column is bounded too.
@@ -210,20 +221,18 @@ export function applyOutlineFallbacks(
   const hasWidgetConfig = outline.widgetType && outline.widgetOutline;
 
   if (outline.widgetType === 'procedural-skill' && !options.allowProceduralSkill) {
-    log.warn(`Procedural-skill outline "${outline.title}" is not enabled, falling back to diagram`);
+    log.warn('Procedural-skill outline is not enabled, falling back to diagram');
     return sanitizeProceduralSkillOutline(outline);
   }
 
   if (outline.type === 'interactive' && !outline.interactiveConfig && !hasWidgetConfig) {
     log.warn(
-      `Interactive outline "${outline.title}" missing interactiveConfig and widget config, falling back to slide`,
+      'Interactive outline missing interactiveConfig and widget config, falling back to slide',
     );
     return { ...outline, type: 'slide' };
   }
   if (outline.type === 'pbl' && (!outline.pblConfig || !hasLanguageModel)) {
-    log.warn(
-      `PBL outline "${outline.title}" missing pblConfig or languageModel, falling back to slide`,
-    );
+    log.warn('PBL outline missing pblConfig or languageModel, falling back to slide');
     return { ...outline, type: 'slide' };
   }
   return outline;

@@ -13,13 +13,13 @@ Use image generation only for slide scenes that need a static visual and have no
 - **Cross-scene reuse**: To reuse a generated image in a different scene, reference the same `elementId` in the later scene's content without adding a new `mediaGenerations` entry. Only the scene that first defines the `elementId` in its `mediaGenerations` should include the generation request
 - Use generated images for static content: diagrams, charts, illustrations, portraits, landscapes
 
-Image example:
+Image example (this example is intentionally topic-neutral — do NOT copy the placeholder text; describe the current lesson's actual subject):
 
 ```json
 "mediaGenerations": [
   {
     "type": "image",
-    "prompt": "A colorful diagram showing the water cycle with evaporation, condensation, and precipitation arrows",
+    "prompt": "<describe an image that visually illustrates the current lesson topic and key points; do not reuse this placeholder>",
     "elementId": "gen_img_1",
     "aspectRatio": "16:9"
   }

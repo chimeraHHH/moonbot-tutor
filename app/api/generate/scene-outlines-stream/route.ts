@@ -24,7 +24,6 @@ import {
   formatTeacherPersonaForPrompt,
 } from '@/lib/generation/generation-pipeline';
 import type { AgentInfo } from '@/lib/generation/generation-pipeline';
-import { DEFAULT_LANGUAGE_DIRECTIVE } from '@/lib/generation/outline-generator';
 import { MAX_PDF_CONTENT_CHARS, MAX_VISION_IMAGES } from '@/lib/constants/generation';
 import { nanoid } from 'nanoid';
 import type {
@@ -37,6 +36,15 @@ import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { resolveVocationalActive } from '@/lib/config/feature-flags';
+import { coerceLessonLanguage } from '@/lib/classroom/language';
+import type { LessonLanguage } from '@/lib/classroom/language';
+import {
+  buildAuthoritativeTopicInstruction,
+  isGenerationContextValid,
+  outlinesMatchTopic,
+  traceGeneration,
+  type GenerationContext,
+} from '@/lib/classroom/generation';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -282,7 +290,6 @@ function ensureUniqueOutlineId(outline: SceneOutline, usedIds: Set<string>): Sce
 }
 
 export async function POST(req: NextRequest) {
-  let requirementSnippet: string | undefined;
   let resolvedModelString: string | undefined;
   try {
     const body = await req.json();
@@ -300,15 +307,40 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Requirements are required');
     }
 
-    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents } = body as {
+    const {
+      requirements,
+      lessonLanguage: incomingLessonLanguage,
+      pdfText,
+      pdfImages,
+      imageMapping,
+      researchContext,
+      agents,
+      generationContext,
+    } = body as {
       requirements: UserRequirements;
+      lessonLanguage?: LessonLanguage;
       pdfText?: string;
       pdfImages?: PdfImage[];
       imageMapping?: ImageMapping;
       researchContext?: string;
       agents?: AgentInfo[];
+      generationContext?: GenerationContext;
     };
-    requirementSnippet = requirements?.requirement?.substring(0, 60);
+    const lessonLanguage = coerceLessonLanguage(incomingLessonLanguage, {
+      explicitLocale: requirements.lessonLocale,
+      userInput: requirements.requirement,
+      uiLocale: requirements.uiLocale,
+    });
+    if (
+      generationContext &&
+      !isGenerationContextValid(generationContext, {
+        classroomId: generationContext.classroomId,
+        topic: requirements.requirement,
+      })
+    ) {
+      return apiError('INVALID_REQUEST', 409, 'Generation identity does not match requirements');
+    }
+    traceGeneration(generationContext, 'outline.request');
 
     // Build user profile string for language inference context
     const userProfileText =
@@ -384,9 +416,7 @@ export async function POST(req: NextRequest) {
       return apiError('INTERNAL_ERROR', 500, 'Prompt template not found');
     }
 
-    log.info(
-      `Generating outlines: "${requirements.requirement.substring(0, 50)}" [model=${modelString}]`,
-    );
+    log.info(`Generating outlines [locale=${lessonLanguage.locale}, model=${modelString}]`);
 
     // Create SSE stream with heartbeat to prevent connection timeout
     const encoder = new TextEncoder();
@@ -424,7 +454,7 @@ export async function POST(req: NextRequest) {
           const streamParams = visionImages?.length
             ? {
                 model: languageModel,
-                system: prompts.system,
+                system: `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
                 messages: [
                   {
                     role: 'user' as const,
@@ -438,7 +468,7 @@ export async function POST(req: NextRequest) {
               }
             : {
                 model: languageModel,
-                system: prompts.system,
+                system: `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
                 prompt: prompts.user,
                 maxOutputTokens: modelInfo?.outputWindow,
                 abortSignal: req.signal,
@@ -486,7 +516,8 @@ export async function POST(req: NextRequest) {
                   if (languageDirective) {
                     const ldEvent = JSON.stringify({
                       type: 'languageDirective',
-                      data: languageDirective,
+                      data: lessonLanguage.instruction,
+                      generationContext,
                     });
                     controller.enqueue(encoder.encode(`data: ${ldEvent}\n\n`));
                   }
@@ -499,6 +530,7 @@ export async function POST(req: NextRequest) {
                     const ctEvent = JSON.stringify({
                       type: 'courseTitle',
                       data: courseTitle,
+                      generationContext,
                     });
                     controller.enqueue(encoder.encode(`data: ${ctEvent}\n\n`));
                   }
@@ -527,8 +559,33 @@ export async function POST(req: NextRequest) {
                     type: 'outline',
                     data: enriched,
                     index: parsedOutlines.length - 1,
+                    generationContext,
                   });
                   controller.enqueue(encoder.encode(`data: ${event}\n\n`));
+                }
+              }
+
+              // Reject prompt-example drift before it becomes classroom state. A missing
+              // user topic used to let the system prompt's projectile-motion example pass.
+              if (
+                generationContext &&
+                parsedOutlines.length > 0 &&
+                !outlinesMatchTopic(requirements.requirement, parsedOutlines, courseTitle || undefined)
+              ) {
+                lastError = 'Generated outlines do not match the requested topic';
+                traceGeneration(generationContext, 'outline.topic-mismatch', {
+                  outlineCount: parsedOutlines.length,
+                });
+                parsedOutlines = [];
+                if (attempt <= MAX_STREAM_RETRIES) {
+                  const retryEvent = JSON.stringify({
+                    type: 'retry',
+                    attempt,
+                    maxAttempts: MAX_STREAM_RETRIES + 1,
+                    generationContext,
+                  });
+                  controller.enqueue(encoder.encode(`data: ${retryEvent}\n\n`));
+                  continue;
                 }
               }
 
@@ -544,11 +601,11 @@ export async function POST(req: NextRequest) {
               }
 
               // Empty result — retry if we have attempts left
-              lastError = fullText.trim()
+              lastError ??= fullText.trim()
                 ? 'LLM response could not be parsed into outlines'
                 : 'LLM returned empty response';
               log.warn(
-                `Outlines attempt ${attempt} diagnostics: textLen=${fullText.length}, outlines=${parsedOutlines.length}, languageDirective=${languageDirective ? 'yes' : 'no'}, preview=${JSON.stringify(fullText.slice(0, 240))}`,
+                `Outlines attempt ${attempt} diagnostics: textLen=${fullText.length}, outlines=${parsedOutlines.length}, languageDirective=${languageDirective ? 'yes' : 'no'}`,
               );
 
               if (attempt <= MAX_STREAM_RETRIES) {
@@ -560,6 +617,7 @@ export async function POST(req: NextRequest) {
                   type: 'retry',
                   attempt,
                   maxAttempts: MAX_STREAM_RETRIES + 1,
+                  generationContext,
                 });
                 controller.enqueue(encoder.encode(`data: ${retryEvent}\n\n`));
               }
@@ -584,6 +642,7 @@ export async function POST(req: NextRequest) {
                   type: 'retry',
                   attempt,
                   maxAttempts: MAX_STREAM_RETRIES + 1,
+                  generationContext,
                 });
                 controller.enqueue(encoder.encode(`data: ${retryEvent}\n\n`));
                 continue;
@@ -598,9 +657,10 @@ export async function POST(req: NextRequest) {
             const doneEvent = JSON.stringify({
               type: 'done',
               outlines: uniquifiedOutlines,
-              languageDirective: languageDirective || DEFAULT_LANGUAGE_DIRECTIVE,
+              languageDirective: lessonLanguage.instruction,
               courseTitle: courseTitle || undefined,
               taskEngineMode,
+              generationContext,
             });
             controller.enqueue(encoder.encode(`data: ${doneEvent}\n\n`));
           } else {
@@ -611,6 +671,7 @@ export async function POST(req: NextRequest) {
             const errorEvent = JSON.stringify({
               type: 'error',
               error: lastError || 'Failed to generate outlines',
+              generationContext,
             });
             controller.enqueue(encoder.encode(`data: ${errorEvent}\n\n`));
           }
@@ -640,10 +701,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    log.error(
-      `Outline streaming failed [requirement="${requirementSnippet ?? 'unknown'}...", model=${resolvedModelString ?? 'unknown'}]:`,
-      error,
-    );
+    log.error(`Outline streaming failed [model=${resolvedModelString ?? 'unknown'}]:`, error);
     return apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error));
   }
 }

@@ -169,7 +169,8 @@ export function makeRegenerateSceneTool(
         };
       }
 
-      const { outline, allOutlines, content, stageId, agents, languageDirective } = ctxData;
+      const { outline, allOutlines, content, stageId, agents, languageDirective, lessonLanguage } =
+        ctxData;
       void stageId;
 
       // slide-only this release — refuse non-slide outlines AND any scene whose
@@ -276,11 +277,14 @@ export function makeRegenerateSceneTool(
         previousSpeeches: [],
       };
 
-      const actions = await generateSceneActions(outline, newContent, actionsAiCall, {
+      const generatedActions = await generateSceneActions(outline, newContent, actionsAiCall, {
         ctx,
         agents,
         languageDirective,
       });
+      const actions = lessonLanguage
+        ? generatedActions.filter((action) => action.type !== 'discussion')
+        : generatedActions;
 
       const text =
         actions.length > 0

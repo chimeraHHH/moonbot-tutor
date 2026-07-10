@@ -6,7 +6,7 @@ import { useStageStore } from '@/lib/store';
 import { loadImageMapping } from '@/lib/utils/image-storage';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { useSceneGenerator } from '@/lib/hooks/use-scene-generator';
+import { useSceneGenerator, type GenerationParams } from '@/lib/hooks/use-scene-generator';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useWhiteboardHistoryStore } from '@/lib/store/whiteboard-history';
 import { createLogger } from '@/lib/logger';
@@ -14,6 +14,13 @@ import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { migrateScene } from '@/lib/edit/slide-schema';
 import type { Scene } from '@/lib/types/stage';
+import type { PdfImage } from '@/lib/types/generation';
+import {
+  generationParamsStorageKey,
+  isSameGeneration,
+  traceGeneration,
+  type GenerationContext,
+} from '@/lib/classroom/generation';
 
 const log = createLogger('Classroom');
 
@@ -27,6 +34,7 @@ export default function ClassroomDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const generationStartedRef = useRef(false);
+  const loadSequenceRef = useRef(0);
 
   const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
     onComplete: () => {
@@ -35,8 +43,11 @@ export default function ClassroomDetailPage() {
   });
 
   const loadClassroom = useCallback(async () => {
+    const loadSequence = ++loadSequenceRef.current;
+    const isCurrentLoad = () => loadSequenceRef.current === loadSequence;
     try {
       await loadFromStorage(classroomId);
+      if (!isCurrentLoad()) return;
 
       // If IndexedDB had no data, try server-side storage (API-generated classrooms)
       if (!useStageStore.getState().stage) {
@@ -45,7 +56,7 @@ export default function ClassroomDetailPage() {
           const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
           if (res.ok) {
             const json = await res.json();
-            if (json.success && json.classroom) {
+            if (json.success && json.classroom && isCurrentLoad()) {
               const { stage, scenes } = json.classroom;
               useStageStore.getState().setStage(stage);
               // Normalize legacy slide content (missing schemaVersion) on the
@@ -80,6 +91,7 @@ export default function ClassroomDetailPage() {
 
       // Restore completed media generation tasks from IndexedDB
       await useMediaGenerationStore.getState().restoreFromDB(classroomId);
+      if (!isCurrentLoad()) return;
       // Restore agents for this stage
       const { loadGeneratedAgentsForStage, useAgentRegistry } =
         await import('@/lib/orchestration/registry/store');
@@ -145,6 +157,7 @@ export default function ClassroomDetailPage() {
 
     // Cancel ongoing generation when classroomId changes or component unmounts
     return () => {
+      loadSequenceRef.current += 1;
       stop();
     };
   }, [classroomId, loadClassroom, stop]);
@@ -166,14 +179,36 @@ export default function ClassroomDetailPage() {
     if (hasPending && stage) {
       generationStartedRef.current = true;
 
-      // Load generation params from sessionStorage (stored by generation-preview before navigating)
-      const genParamsStr = sessionStorage.getItem('generationParams');
-      const params = genParamsStr ? JSON.parse(genParamsStr) : {};
+      // Params belong to one classroom and one immutable generation. The former
+      // fixed key allowed a previous course's continuation payload to be reused.
+      const genParamsStr = sessionStorage.getItem(generationParamsStorageKey(classroomId));
+      let params: Partial<GenerationParams> & {
+        generationContext?: GenerationContext;
+        pdfImages?: PdfImage[];
+      } = {};
+      try {
+        params = genParamsStr ? JSON.parse(genParamsStr) : {};
+      } catch {
+        traceGeneration(stage.generationContext, 'generation-params.invalid-json');
+      }
+
+      if (
+        stage.generationContext &&
+        !isSameGeneration(params.generationContext, stage.generationContext)
+      ) {
+        traceGeneration(stage.generationContext, 'generation-params.missing-or-stale');
+        const pending = outlines.filter((outline) => !completedOrders.has(outline.order));
+        useStageStore.getState().setGeneratingOutlines(pending);
+        pending.forEach((outline) => useStageStore.getState().addFailedOutline(outline));
+        useStageStore.getState().setGenerationStatus('paused');
+        return;
+      }
+      traceGeneration(stage.generationContext, 'classroom.resume');
 
       // Reconstruct imageMapping from IndexedDB using pdfImages storageIds
       const storageIds = (params.pdfImages || [])
         .map((img: { storageId?: string }) => img.storageId)
-        .filter(Boolean);
+        .filter((storageId): storageId is string => Boolean(storageId));
 
       loadImageMapping(storageIds).then((imageMapping) => {
         generateRemaining({
@@ -187,6 +222,8 @@ export default function ClassroomDetailPage() {
           agents: params.agents,
           userProfile: params.userProfile,
           languageDirective: params.languageDirective || stage.languageDirective,
+          lessonLanguage: params.lessonLanguage || stage.lessonLanguage,
+          generationContext: params.generationContext || stage.generationContext,
         });
       });
     } else if (outlines.length > 0 && stage) {
@@ -210,7 +247,7 @@ export default function ClassroomDetailPage() {
         log.warn('[Classroom] Media generation resume error:', err);
       });
     }
-  }, [loading, error, generateRemaining]);
+  }, [classroomId, loading, error, generateRemaining]);
 
   return (
     <ThemeProvider>

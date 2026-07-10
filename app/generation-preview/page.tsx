@@ -45,6 +45,19 @@ import {
 } from './types';
 import { StepVisualizer } from './components/visualizers';
 import { resolveTaskEngineModeFromOutlineDoneEvent } from './vocational-mode';
+import { buildConfirmedOutlineSession, GenerationRunGate } from './generation-run-gate';
+import { resolveLessonLanguage } from '@/lib/classroom/language';
+import { createPeerAgentClassroomState } from '@/lib/classroom/peer-agents';
+import {
+  GENERATION_SESSION_STORAGE_KEY,
+  generationParamsStorageKey,
+  isSameGeneration,
+  persistGenerationSessionIfCurrent,
+  removeGenerationSessionIfCurrent,
+  replaceGenerationSession,
+  traceGeneration,
+  type GenerationContext,
+} from '@/lib/classroom/generation';
 
 const log = createLogger('GenerationPreview');
 const OUTLINE_REVIEW_AUTO_CONTINUE_MS = 2500;
@@ -53,6 +66,8 @@ function GenerationPreviewContent() {
   const router = useRouter();
   const { t } = useI18n();
   const hasStartedRef = useRef(false);
+  const generationRunGateRef = useRef(new GenerationRunGate());
+  const outlineConfirmationGenerationRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outlineReviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outlineReviewResolveRef = useRef<((outlines: SceneOutline[]) => void) | null>(null);
@@ -96,9 +111,20 @@ function GenerationPreviewContent() {
   const isOutlineReady = session?.previewPhase === 'outline-ready';
   const isReviewingOutlines = session?.previewPhase === 'review';
 
-  const persistSession = (nextSession: GenerationSessionState) => {
+  const persistSession = (nextSession: GenerationSessionState): boolean => {
+    if (!persistGenerationSessionIfCurrent(sessionStorage, nextSession)) {
+      traceGeneration(
+        {
+          ...nextSession,
+          topic: nextSession.requirements.requirement,
+          lessonLanguage: nextSession.lessonLanguage?.locale,
+        },
+        'session.write.discarded',
+      );
+      return false;
+    }
     setSession(nextSession);
-    sessionStorage.setItem('generationSession', JSON.stringify(nextSession));
+    return true;
   };
 
   const clearOutlineReviewTimer = () => {
@@ -143,21 +169,39 @@ function GenerationPreviewContent() {
   useEffect(() => {
     cleanupOldImages(24).catch((e) => log.error(e));
 
-    const saved = sessionStorage.getItem('generationSession');
+    const saved = sessionStorage.getItem(GENERATION_SESSION_STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as GenerationSessionState;
-        if (!parsed.previewPhase) {
-          parsed.previewPhase = parsed.sceneOutlines?.length ? 'outline-ready' : 'preparing';
+        const parsed = JSON.parse(saved) as Partial<GenerationSessionState>;
+        if (!parsed.requirements?.requirement || !parsed.sessionId) {
+          throw new Error('Invalid generation session');
+        }
+        // One-time migration for sessions created before generation isolation existed.
+        const normalized: GenerationSessionState = {
+          ...(parsed as GenerationSessionState),
+          classroomId: parsed.classroomId || nanoid(10),
+          generationId: parsed.generationId || nanoid(),
+        };
+        replaceGenerationSession(sessionStorage, normalized);
+        if (!normalized.previewPhase) {
+          normalized.previewPhase = normalized.sceneOutlines?.length ? 'outline-ready' : 'preparing';
         }
         // Restore review intent: a saved 'review' phase without outlines means the user
         // had opened the editor mid-stream before the refresh — preserve that intent so
         // the post-stream auto-continue timer doesn't fire after SSE restart.
-        if (parsed.previewPhase === 'review' && !parsed.sceneOutlines?.length) {
+        if (normalized.previewPhase === 'review' && !normalized.sceneOutlines?.length) {
           outlineReviewIntentRef.current = true;
         }
-        parsed.taskEngineMode = parsed.taskEngineMode === true;
-        setSession(parsed);
+        normalized.taskEngineMode = normalized.taskEngineMode === true;
+        setSession(normalized);
+        traceGeneration(
+          {
+            ...normalized,
+            topic: normalized.requirements.requirement,
+            lessonLanguage: normalized.lessonLanguage?.locale,
+          },
+          'session.restored',
+        );
       } catch (e) {
         log.error('Failed to parse generation session:', e);
       }
@@ -230,6 +274,18 @@ function GenerationPreviewContent() {
     const generationSession = sessionOverride ?? session;
     if (!generationSession) return;
 
+    if (!generationRunGateRef.current.tryStart(generationSession)) {
+      traceGeneration(
+        {
+          ...generationSession,
+          topic: generationSession.requirements.requirement,
+          lessonLanguage: generationSession.lessonLanguage?.locale,
+        },
+        'generation.start.duplicate-discarded',
+      );
+      return;
+    }
+
     // Create AbortController for this generation run
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -238,6 +294,20 @@ function GenerationPreviewContent() {
 
     // Use a local mutable copy so we can update it after document extraction
     let currentSession = generationSession;
+
+    const ensureCurrentGeneration = () => {
+      const raw = sessionStorage.getItem(GENERATION_SESSION_STORAGE_KEY);
+      let active: Partial<GenerationSessionState> | null = null;
+      try {
+        active = raw ? (JSON.parse(raw) as Partial<GenerationSessionState>) : null;
+      } catch {
+        active = null;
+      }
+      if (!isSameGeneration(active, generationSession)) {
+        controller.abort();
+        throw new DOMException('Stale generation result', 'AbortError');
+      }
+    };
 
     setError(null);
     setCurrentStepIndex(0);
@@ -371,8 +441,8 @@ function GenerationPreviewContent() {
           imageStorageIds,
           pdfStorageKey: undefined, // Clear so we don't re-parse
         };
-        setSession(updatedSession);
-        sessionStorage.setItem('generationSession', JSON.stringify(updatedSession));
+        ensureCurrentGeneration();
+        persistSession(updatedSession);
 
         // Truncation warnings
         const warnings: string[] = [];
@@ -435,8 +505,8 @@ function GenerationPreviewContent() {
           researchContext: searchData.context || '',
           researchSources: sources,
         };
-        setSession(updatedSessionWithSearch);
-        sessionStorage.setItem('generationSession', JSON.stringify(updatedSessionWithSearch));
+        ensureCurrentGeneration();
+        persistSession(updatedSessionWithSearch);
         currentSession = updatedSessionWithSearch;
         activeSteps = getActiveSteps(currentSession);
       }
@@ -455,7 +525,22 @@ function GenerationPreviewContent() {
       }
 
       // Create stage client-side
-      const stageId = nanoid(10);
+      const stageId = currentSession.classroomId;
+      const lessonLanguage =
+        currentSession.lessonLanguage ??
+        resolveLessonLanguage({
+          explicitLocale: currentSession.requirements.lessonLocale,
+          userInput: currentSession.requirements.requirement,
+          uiLocale: currentSession.requirements.uiLocale,
+        });
+      const generationContext: GenerationContext = {
+        classroomId: stageId,
+        sessionId: currentSession.sessionId,
+        generationId: currentSession.generationId,
+        topic: currentSession.requirements.requirement,
+        lessonLanguage: lessonLanguage.locale,
+      };
+      traceGeneration(generationContext, 'classroom.created');
       const stage: Stage = {
         id: stageId,
         name: extractTopicFromRequirement(currentSession.requirements.requirement),
@@ -465,11 +550,15 @@ function GenerationPreviewContent() {
         updatedAt: Date.now(),
         interactiveMode: !!currentSession.requirements.interactiveMode,
         taskEngineMode: currentSession.taskEngineMode === true,
+        lessonLanguage,
+        // Kept for old consumers and imported classrooms; new code reads lessonLanguage.
+        languageDirective: lessonLanguage.instruction,
+        generationContext,
       };
 
       // ── Generate outlines first (infers languageDirective) ──
       let outlines = currentSession.sceneOutlines;
-      let languageDirective = currentSession.languageDirective;
+      let languageDirective = lessonLanguage.instruction;
       let courseTitle = currentSession.courseTitle;
 
       const outlineStepIdx = activeSteps.findIndex((s) => s.id === 'outline');
@@ -486,7 +575,6 @@ function GenerationPreviewContent() {
           taskEngineMode: boolean;
         }>((resolve, reject) => {
           const collected: SceneOutline[] = [];
-          let directive: string | undefined;
           let title: string | undefined;
 
           fetch('/api/generate/scene-outlines-stream', {
@@ -495,6 +583,8 @@ function GenerationPreviewContent() {
             body: JSON.stringify(
               withThinkingConfig({
                 requirements: currentSession.requirements,
+                lessonLanguage,
+                generationContext,
                 pdfText: currentSession.pdfText,
                 pdfImages: currentSession.pdfImages,
                 imageMapping,
@@ -531,10 +621,14 @@ function GenerationPreviewContent() {
                       try {
                         const evt = JSON.parse(line.slice(6));
                         if (evt.type === 'languageDirective') {
-                          directive = evt.data;
+                          // The client-resolved lesson language is authoritative.
                         } else if (evt.type === 'courseTitle') {
                           title = evt.data;
                         } else if (evt.type === 'outline') {
+                          if (evt.generationContext && !isSameGeneration(evt.generationContext, generationContext)) {
+                            traceGeneration(generationContext, 'outline.event.discarded');
+                            continue;
+                          }
                           collected.push(evt.data);
                           setStreamingOutlines([...collected]);
                         } else if (evt.type === 'retry') {
@@ -543,17 +637,17 @@ function GenerationPreviewContent() {
                           // attempt — the server resets these per attempt, so a
                           // succeeding attempt that omits them must fall back, not
                           // inherit the previous attempt's stale values.
-                          directive = undefined;
                           title = undefined;
                           setStreamingOutlines([]);
                           setStatusMessage(t('generation.outlineRetrying'));
                         } else if (evt.type === 'done') {
-                          directive = evt.languageDirective || directive;
+                          if (!isSameGeneration(evt.generationContext, generationContext)) {
+                            reject(new DOMException('Stale outline result', 'AbortError'));
+                            return;
+                          }
                           resolve({
                             outlines: evt.outlines || collected,
-                            languageDirective:
-                              directive ||
-                              'Teach in the language that matches the user requirement.',
+                            languageDirective: lessonLanguage.instruction,
                             courseTitle: evt.courseTitle || title,
                             taskEngineMode: resolveTaskEngineModeFromOutlineDoneEvent(evt),
                           });
@@ -571,8 +665,7 @@ function GenerationPreviewContent() {
                     if (collected.length > 0) {
                       resolve({
                         outlines: collected,
-                        languageDirective:
-                          directive || 'Teach in the language that matches the user requirement.',
+                        languageDirective: lessonLanguage.instruction,
                         // Carry any title latched from a streaming `courseTitle`
                         // event here too — symmetric with languageDirective — so
                         // a stream that ends without an explicit `done` event
@@ -594,6 +687,7 @@ function GenerationPreviewContent() {
         });
 
         outlines = outlineResult.outlines;
+        ensureCurrentGeneration();
         languageDirective = outlineResult.languageDirective;
         courseTitle = outlineResult.courseTitle;
         const effectiveTaskEngineMode = outlineResult.taskEngineMode;
@@ -607,11 +701,12 @@ function GenerationPreviewContent() {
           ...currentSession,
           sceneOutlines: outlines,
           languageDirective,
+          lessonLanguage,
           courseTitle,
           taskEngineMode: effectiveTaskEngineMode,
           previewPhase: shouldReviewOutlines ? 'review' : 'outline-ready',
         };
-        persistSession(updatedSession);
+        if (!persistSession(updatedSession)) throw new DOMException('Stale generation result', 'AbortError');
         currentSession = updatedSession;
         setStreamingOutlines(outlines);
 
@@ -625,7 +720,7 @@ function GenerationPreviewContent() {
           taskEngineMode: effectiveTaskEngineMode,
           previewPhase: 'generating-content',
         };
-        persistSession(currentSession);
+        if (!persistSession(currentSession)) throw new DOMException('Stale generation result', 'AbortError');
 
         // User has committed to course generation (either by confirming the
         // outline review or by letting the auto-continue timer fire). Now it's
@@ -646,9 +741,8 @@ function GenerationPreviewContent() {
       stage.taskEngineMode = currentSession.taskEngineMode === true;
 
       // Store languageDirective on the stage
-      if (languageDirective) {
-        stage.languageDirective = languageDirective;
-      }
+      stage.languageDirective = lessonLanguage.instruction;
+      stage.lessonLanguage = lessonLanguage;
 
       // Adopt the LLM-inferred course title as the stage name when available,
       // replacing the raw-requirement placeholder set at stage creation time.
@@ -832,6 +926,11 @@ function GenerationPreviewContent() {
       // Store stage and outlines
       const store = useStageStore.getState();
       stage.videoManifest = buildVideoManifestFromOutlines(outlines);
+      stage.peerAgentState = createPeerAgentClassroomState(
+        stage.id,
+        outlines,
+        lessonLanguage.locale,
+      );
       store.setStage(stage);
       store.setOutlines(outlines);
 
@@ -867,7 +966,9 @@ function GenerationPreviewContent() {
           stageId: stage.id,
           agents,
           languageDirective,
+          lessonLanguage,
           requirements: currentSession.requirements,
+          generationContext: { ...generationContext, sceneId: firstOutline.id },
         },
         signal,
         FOREGROUND_SCENE_RETRY_OPTIONS,
@@ -891,6 +992,8 @@ function GenerationPreviewContent() {
           previousSpeeches: [],
           userProfile,
           languageDirective,
+          lessonLanguage,
+          generationContext: { ...generationContext, sceneId: firstOutline.id },
         },
         signal,
         FOREGROUND_SCENE_RETRY_OPTIONS,
@@ -900,6 +1003,7 @@ function GenerationPreviewContent() {
         throw new Error(data.error || t('generation.sceneGenerateFailed'));
       }
       const firstScene = data.scene;
+      ensureCurrentGeneration();
 
       // Generate TTS for first scene (part of actions step — blocking)
       if (
@@ -958,17 +1062,21 @@ function GenerationPreviewContent() {
 
       // Store generation params for classroom to continue generation
       sessionStorage.setItem(
-        'generationParams',
+        generationParamsStorageKey(stage.id),
         JSON.stringify({
+          generationContext,
           pdfImages: currentSession.pdfImages,
           agents,
           userProfile,
           languageDirective,
+          lessonLanguage,
         }),
       );
 
-      sessionStorage.removeItem('generationSession');
+      ensureCurrentGeneration();
       await store.saveToStorage();
+      ensureCurrentGeneration();
+      removeGenerationSessionIfCurrent(sessionStorage, currentSession);
       router.push(`/classroom/${stage.id}`);
     } catch (err) {
       setIsOutlineStreaming(false);
@@ -977,8 +1085,10 @@ function GenerationPreviewContent() {
         log.info('[GenerationPreview] Generation aborted');
         return;
       }
-      sessionStorage.removeItem('generationSession');
+      removeGenerationSessionIfCurrent(sessionStorage, generationSession);
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      generationRunGateRef.current.finish(generationSession);
     }
   };
 
@@ -994,7 +1104,7 @@ function GenerationPreviewContent() {
     abortControllerRef.current?.abort();
     clearOutlineReviewTimer();
     outlineReviewIntentRef.current = false;
-    sessionStorage.removeItem('generationSession');
+    if (session) removeGenerationSessionIfCurrent(sessionStorage, session);
     router.push('/');
   };
 
@@ -1081,9 +1191,34 @@ function GenerationPreviewContent() {
   const handleConfirmOutlines = () => {
     const finalOutlines = session?.sceneOutlines ?? streamingOutlines;
     if (!finalOutlines || finalOutlines.length === 0) return;
+    if (!session) return;
+
+    const confirmationKey = `${session.classroomId}:${session.sessionId}:${session.generationId}`;
+    if (outlineConfirmationGenerationRef.current === confirmationKey) {
+      traceGeneration(
+        {
+          ...session,
+          topic: session.requirements.requirement,
+          lessonLanguage: session.lessonLanguage?.locale,
+        },
+        'outline.confirm.duplicate-discarded',
+      );
+      return;
+    }
+    outlineConfirmationGenerationRef.current = confirmationKey;
     setIsConfirmingOutlines(true);
     clearOutlineReviewTimer();
     outlineReviewIntentRef.current = false;
+
+    // Commit the phase before releasing or restarting the generation pipeline.
+    // This immediately removes the review UI and closes the double-click window.
+    const confirmedSession = buildConfirmedOutlineSession(session, finalOutlines);
+    if (!persistSession(confirmedSession)) {
+      outlineConfirmationGenerationRef.current = null;
+      setIsConfirmingOutlines(false);
+      setError(t('generation.sessionNotFoundDesc'));
+      return;
+    }
 
     if (outlineReviewResolveRef.current) {
       const resolve = outlineReviewResolveRef.current;
@@ -1097,13 +1232,6 @@ function GenerationPreviewContent() {
     // editor is about to unmount anyway as we drive the next phase ourselves.
     // Reset the flag so the state doesn't linger if `startGeneration` later
     // re-renders the editor for any reason.
-    setIsConfirmingOutlines(false);
-    const confirmedSession: GenerationSessionState = {
-      ...(session as GenerationSessionState),
-      sceneOutlines: finalOutlines,
-      previewPhase: 'generating-content',
-    };
-    persistSession(confirmedSession);
     hasStartedRef.current = true;
     void startGeneration(confirmedSession);
   };

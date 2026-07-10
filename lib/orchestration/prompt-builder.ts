@@ -143,7 +143,9 @@ export function buildStructuredPrompt(
     roleGuideline: ROLE_GUIDELINES[agentConfig.role] || ROLE_GUIDELINES.student,
     studentProfileSection: buildStudentProfileSection(userProfile),
     peerContext: buildPeerContextSection(agentResponses, agentConfig.name),
-    languageConstraint: buildLanguageConstraint(storeState.stage?.languageDirective),
+    languageConstraint: buildLanguageConstraint(
+      storeState.stage?.lessonLanguage?.instruction || storeState.stage?.languageDirective,
+    ),
     formatExample: hasSlideActions ? FORMAT_EXAMPLE_SLIDE : FORMAT_EXAMPLE_WB,
     orderingPrinciples: hasSlideActions ? ORDERING_SLIDE : ORDERING_WB,
     spotlightExamples: hasSlideActions ? SPOTLIGHT_EXAMPLES : '',

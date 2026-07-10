@@ -35,6 +35,7 @@ import type {
 } from '@/lib/types/generation';
 import type { SceneContent } from '@/lib/types/stage';
 import type { LlmStage } from '@/lib/server/model-routes';
+import type { LessonLanguage } from '@/lib/classroom/language';
 
 // ── Scene context shape (client-sourced, injected via deps) ──────────────────
 
@@ -51,6 +52,7 @@ export interface SceneContext {
   agents?: AgentInfo[];
   /** Optional language directive forwarded to the generator. */
   languageDirective?: string;
+  lessonLanguage?: LessonLanguage;
   /**
    * Runtime errors the interactive iframe reported for this scene (captured by
    * the error shim, see lib/utils/iframe.ts). Surfaced to the model by
@@ -191,7 +193,8 @@ export function makeRegenerateSceneActionsTool(
         };
       }
 
-      const { outline, allOutlines, content, stageId, agents, languageDirective } = ctxData;
+      const { outline, allOutlines, content, stageId, agents, languageDirective, lessonLanguage } =
+        ctxData;
 
       // Suppress unused variable — stageId is part of the context contract and
       // may be needed by future tool logic (e.g. quota checks, audit logging).
@@ -225,12 +228,15 @@ export function makeRegenerateSceneActionsTool(
       // function returns [] immediately.
       const generationContent = toGenerationContent(content);
 
-      const actions = await generateSceneActions(outline, generationContent, aiCallFn, {
+      const generatedActions = await generateSceneActions(outline, generationContent, aiCallFn, {
         ctx,
         agents,
         userProfile,
         languageDirective,
       });
+      const actions = lessonLanguage
+        ? generatedActions.filter((action) => action.type !== 'discussion')
+        : generatedActions;
 
       if (actions.length === 0) {
         return {

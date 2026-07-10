@@ -11,6 +11,8 @@ import type { PBLAgent, PBLIssue } from '@/lib/pbl/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { coerceLessonLanguage } from '@/lib/classroom/language';
+import type { LessonLanguage } from '@/lib/classroom/language';
 const log = createLogger('PBL Chat');
 
 interface PBLChatRequest {
@@ -20,6 +22,7 @@ interface PBLChatRequest {
   recentMessages: { agent_name: string; message: string }[];
   userRole: string;
   agentType?: 'question' | 'judge';
+  lessonLanguage?: LessonLanguage;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,7 +62,10 @@ export async function POST(req: NextRequest) {
             .join('\n')}`
         : '';
 
-    const systemPrompt = `${agent.system_prompt}${issueContext}${recentContext}${userRole ? `\n\nThe student's role is: ${userRole}` : ''}`;
+    const languageInstruction = body.lessonLanguage
+      ? coerceLessonLanguage(body.lessonLanguage).instruction
+      : '';
+    const systemPrompt = `${agent.system_prompt}${issueContext}${recentContext}${userRole ? `\n\nThe student's role is: ${userRole}` : ''}${languageInstruction ? `\n\n## Classroom language\n${languageInstruction}` : ''}`;
 
     const result = await callLLM(
       {
