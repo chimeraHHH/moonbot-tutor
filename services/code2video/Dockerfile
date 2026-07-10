@@ -8,7 +8,11 @@ USER root
 
 # sox + libsndfile for manim-voiceover/pydub; ffmpeg for the merge stage
 # (manim itself uses imageio's bundled ffmpeg, but section-video merge calls the CLI).
-RUN apt-get update \
+# Switch to the Tsinghua Debian mirror first — the base is Debian trixie and the
+# default foreign apt mirrors are very slow on the China deploy server.
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
+        /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends sox libsndfile1 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
