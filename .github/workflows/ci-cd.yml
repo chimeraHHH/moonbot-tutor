@@ -63,6 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Resolve image name
         id: img
@@ -88,7 +91,7 @@ jobs:
             docker run -d \
               --name moonbot-tutor-backend \
               --restart unless-stopped \
-              -p 80:3000 \
+              -p 8088:3000 \
               -e PORT=3000 \
               "$IMAGE:latest"
             docker ps --filter name=moonbot-tutor-backend

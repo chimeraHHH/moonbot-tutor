@@ -5,7 +5,7 @@ services:
     container_name: moonbot-tutor-backend
     restart: unless-stopped
     ports:
-      - "80:3000"
+      - "8088:3000"
     environment:
       - PORT=3000
       # The NestJS BFF forwards here (FastAPI code2video / Deep Solve).
