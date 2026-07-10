@@ -75,9 +75,11 @@ describe('Code2VideoClient', () => {
       await expect(makeClient().createTask('q', '')).rejects.toBeInstanceOf(BadGatewayException);
     });
 
-    it('passes a network error through as a thrown Error', async () => {
-      fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
-      await expect(makeClient().createTask('q', '')).rejects.toThrow('ECONNREFUSED');
+    it('maps a network failure (ECONNREFUSED) to ServiceUnavailableException', async () => {
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+      await expect(makeClient().createTask('q', '')).rejects.toMatchObject({
+        message: expect.stringContaining('code2video unreachable'),
+      });
     });
   });
 

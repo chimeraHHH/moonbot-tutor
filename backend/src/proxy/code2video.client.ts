@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'node:stream';
@@ -69,28 +70,51 @@ export class Code2VideoClient {
     throw mapStatus(res.status, context, detail);
   }
 
+  /** fetch + map network failures and non-2xx to NestJS HTTP exceptions. */
+  private async send(url: string, init: RequestInit, context: string): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (err) {
+      throw new ServiceUnavailableException(
+        `code2video unreachable (${context}): ${(err as Error).message}`,
+      );
+    }
+    await this.assertOk(res, context);
+    return res;
+  }
+
   async createTask(question: string, context: string): Promise<C2VCreateResponse> {
-    const res = await fetch(this.url('/tasks'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        engine: 'code2video',
-        input: { question, context: context ?? '' },
-      }),
-    });
-    await this.assertOk(res, 'create task');
+    const res = await this.send(
+      this.url('/tasks'),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          engine: 'code2video',
+          input: { question, context: context ?? '' },
+        }),
+      },
+      'create task',
+    );
     return (await res.json()) as C2VCreateResponse;
   }
 
   async getTask(taskId: string): Promise<C2VTaskStatus> {
-    const res = await fetch(this.url(`/tasks/${encodeURIComponent(taskId)}`));
-    await this.assertOk(res, 'get task');
+    const res = await this.send(
+      this.url(`/tasks/${encodeURIComponent(taskId)}`),
+      { method: 'GET' },
+      'get task',
+    );
     return (await res.json()) as C2VTaskStatus;
   }
 
   async getVideo(taskId: string): Promise<C2VVideo> {
-    const res = await fetch(this.url(`/tasks/${encodeURIComponent(taskId)}/video`));
-    await this.assertOk(res, 'get video');
+    const res = await this.send(
+      this.url(`/tasks/${encodeURIComponent(taskId)}/video`),
+      { method: 'GET' },
+      'get video',
+    );
     const contentType = res.headers.get('content-type') || 'video/mp4';
     const stream = Readable.fromWeb(res.body as unknown as import('stream/web').ReadableStream);
     return { stream, contentType };
@@ -104,10 +128,11 @@ export class Code2VideoClient {
     taskId: string,
     signal?: AbortSignal,
   ): AsyncGenerator<string, void, unknown> {
-    const res = await fetch(this.url(`/tasks/${encodeURIComponent(taskId)}/events`), {
-      signal,
-    });
-    await this.assertOk(res, 'stream events');
+    const res = await this.send(
+      this.url(`/tasks/${encodeURIComponent(taskId)}/events`),
+      { method: 'GET', signal },
+      'stream events',
+    );
     const reader = (res.body as ReadableStream<Uint8Array>).getReader();
     const decoder = new TextDecoder();
     let buffer = '';
