@@ -4,21 +4,18 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Post,
+  StreamableFile,
   Sse,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { CreateTaskDto } from './create-task.dto';
+import { CreateTaskDto } from './dtos';
 import { ProxyService } from './proxy.service';
 
 /**
- * ProxyController — the BFF surface.
- *
- * These endpoints mirror `openapi.yaml` and are intended to forward to the
- * FastAPI code2video (Deep Solve) service. Implementation is deferred; for now
- * they return 501 so the contract is testable but not yet wired.
+ * ProxyController — the BFF surface defined in `openapi.yaml`.
+ * Forwards to the FastAPI code2video (Deep Solve) service via ProxyService.
  */
 @Controller('api/v1')
 export class ProxyController {
@@ -43,9 +40,12 @@ export class ProxyController {
     return this.proxy.taskEvents(taskId);
   }
 
-  /** Resolve the rendered video for a finished task. */
+  /** Stream the rendered explainer video. */
   @Get('tasks/:taskId/video')
-  getVideo(@Param('taskId') taskId: string) {
-    throw new NotFoundException('video result not available yet');
+  async getVideo(
+    @Param('taskId') taskId: string,
+  ): Promise<StreamableFile> {
+    const { stream, contentType } = await this.proxy.getVideo(taskId);
+    return new StreamableFile(stream, { type: contentType });
   }
 }
