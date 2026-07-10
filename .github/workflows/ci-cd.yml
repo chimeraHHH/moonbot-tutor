@@ -28,7 +28,7 @@ jobs:
       - run: npm test
 
   deploy:
-    name: Ship & build on server
+    name: Ship & build & run on server
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -38,19 +38,61 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      # The deploy server (China) can't reliably reach GitHub or GHCR, so the
-      # runner packs the sources and ships them over SSH; the server builds the
-      # image locally (node:22-alpine is cached there, npm uses the China mirror).
-      - name: Pack backend
-        run: tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf deploy.tar .
+      # The deploy server (China) can't reliably reach GitHub/GHCR, so the runner
+      # packs both services and ships them over SSH; the server builds the images
+      # locally and runs them on a shared docker network (backend -> code2video).
+      - name: Pack sources
+        run: |
+          tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf backend-deploy.tar .
+          tar -C services/code2video --exclude=__pycache__ --exclude=.venv --exclude='*.pyc' -czf c2v-deploy.tar .
 
       - name: Ship & build & run on server
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          C2V_LLM_API_KEY: ${{ secrets.C2V_LLM_API_KEY }}
+          C2V_LLM_BASE_URL: ${{ secrets.C2V_LLM_BASE_URL }}
+          C2V_LLM_MODEL: ${{ secrets.C2V_LLM_MODEL }}
+          C2V_FIX_MODEL: ${{ secrets.C2V_FIX_MODEL }}
+          C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
         run: |
           set -e
-          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no -o ConnectTimeout=20 deploy.tar "$SERVER_USER@$SERVER_HOST:/home/$SERVER_USER/moonbot-deploy.tar"
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$SERVER_USER@$SERVER_HOST" \
-            'set -e; rm -rf ~/moonbot-build && mkdir -p ~/moonbot-build && tar xzf ~/moonbot-deploy.tar -C ~/moonbot-build && cd ~/moonbot-build && docker build -t moonbot-tutor-backend:ci . && (docker stop moonbot-tutor-backend 2>/dev/null || true) && (docker rm moonbot-tutor-backend 2>/dev/null || true) && docker run -d --name moonbot-tutor-backend --restart unless-stopped -p 8088:3000 -e PORT=3000 moonbot-tutor-backend:ci && docker ps --filter name=moonbot-tutor-backend'
+          REMOTE="$SERVER_USER@$SERVER_HOST"
+          SSHOPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=30"
+          sshpass -p "$SERVER_PASSWORD" scp $SSHOPTS backend-deploy.tar c2v-deploy.tar "$REMOTE:/home/$SERVER_USER/"
+          sshpass -p "$SERVER_PASSWORD" ssh $SSHOPTS "$REMOTE" 'bash -s' <<EOF
+          set -e
+          cd ~
+          rm -rf moonbot-backend-src moonbot-c2v-src
+          mkdir -p moonbot-backend-src moonbot-c2v-src
+          tar xzf backend-deploy.tar -C moonbot-backend-src
+          tar xzf c2v-deploy.tar -C moonbot-c2v-src
+
+          docker network create moonbot-net 2>/dev/null || true
+
+          # code2video (heavy: manim + LaTeX base; layers cache after first build)
+          docker build -t moonbot-code2video:ci moonbot-c2v-src
+          docker build -t moonbot-backend:ci moonbot-backend-src
+
+          docker stop moonbot-code2video 2>/dev/null || true
+          docker rm   moonbot-code2video 2>/dev/null || true
+          docker run -d --name moonbot-code2video --restart unless-stopped --network moonbot-net \
+            -e PORT=8010 \
+            -e C2V_LLM_PROVIDER=gpt-4o \
+            -e C2V_LLM_API_KEY="$C2V_LLM_API_KEY" \
+            -e C2V_LLM_BASE_URL="$C2V_LLM_BASE_URL" \
+            -e C2V_LLM_MODEL="$C2V_LLM_MODEL" \
+            -e C2V_FIX_MODEL="$C2V_FIX_MODEL" \
+            -e C2V_TTS_DOUBAO_KEY="$C2V_TTS_DOUBAO_KEY" \
+            moonbot-code2video:ci
+
+          docker stop moonbot-tutor-backend 2>/dev/null || true
+          docker rm   moonbot-tutor-backend 2>/dev/null || true
+          docker run -d --name moonbot-tutor-backend --restart unless-stopped --network moonbot-net -p 8088:3000 \
+            -e PORT=3000 \
+            -e CODE2VIDEO_BASE_URL=http://moonbot-code2video:8010 \
+            moonbot-backend:ci
+
+          docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          EOF
