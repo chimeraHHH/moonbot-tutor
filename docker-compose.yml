@@ -1,7 +1,7 @@
 services:
   backend:
-    # Image published by CI to GHCR. For local dev use `npm run start:dev` instead.
-    image: ghcr.io/chimerahh/moonbot-tutor-backend:latest
+    # Build locally (the deploy server builds this directly; no registry needed).
+    build: ./backend
     container_name: moonbot-tutor-backend
     restart: unless-stopped
     ports:
