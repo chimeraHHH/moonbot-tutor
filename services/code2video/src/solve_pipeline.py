@@ -23,8 +23,8 @@ DEFAULT_LLM1_MODEL = "MiniMax-M2.1"
 DEFAULT_LLM2_MODEL = "MiniMax-M2.1"
 
 DEFAULT_LLM1_SYSTEM_PROMPT = (
-    "You are a careful math tutor. Solve the question clearly with concise numbered steps, "
-    "and provide a final answer at the end."
+    "你是一名严谨的中文教师。请使用简体中文清晰讲解问题，用简洁的编号步骤展开，并在最后给出明确答案。"
+    "除数学公式、通用符号和必要的专有名词外，不得使用英文叙述。"
 )
 
 DEFAULT_LLM2_SYSTEM_PROMPT = """
@@ -49,6 +49,10 @@ Rules:
 - steps must be non-empty.
 - final_answer must be explicit and short.
 - lecture_lines and animations should align in count.
+- All user-visible text, section titles, lecture_lines, animation descriptions,
+  and narration must be written in Simplified Chinese, even when the input is English.
+- English is allowed only inside mathematical formulas, universal symbols, and
+  indispensable proper nouns. Do not write English explanatory sentences.
 - Output JSON only, no markdown, no explanations.
 """.strip()
 
@@ -123,7 +127,7 @@ def _solution_lines(solution_text: str) -> List[str]:
 
 
 def _build_default_steps(solution_text: str) -> List[SolveStep]:
-    return [SolveStep(line=line, subtitle=f"Step {idx}") for idx, line in enumerate(_solution_lines(solution_text), start=1)]
+    return [SolveStep(line=line, subtitle=f"步骤 {idx}") for idx, line in enumerate(_solution_lines(solution_text), start=1)]
 
 
 def _build_default_video_sections(steps: List[SolveStep], final_answer: str) -> List[VideoSection]:
@@ -141,9 +145,9 @@ def _build_default_video_sections(steps: List[SolveStep], final_answer: str) -> 
         sections.append(
             VideoSection(
                 id=f"section_{section_idx}",
-                title=f"Solve Part {section_idx}",
+                title=f"讲解第 {section_idx} 部分",
                 lecture_lines=chunk,
-                animations=[f"Show and explain: {line}" for line in chunk],
+                animations=[f"展示并讲解：{line}" for line in chunk],
             )
         )
     return sections
@@ -161,7 +165,7 @@ def _normalize_plan_dict(raw_data: Any, question: str, solution: str) -> Dict[st
         normalized["analysis_points"] = []
 
     if not isinstance(normalized.get("steps"), list):
-        normalized["steps"] = [{"line": line, "subtitle": f"Step {idx}"} for idx, line in enumerate(_solution_lines(solution), start=1)]
+        normalized["steps"] = [{"line": line, "subtitle": f"步骤 {idx}"} for idx, line in enumerate(_solution_lines(solution), start=1)]
 
     final_answer = str(normalized.get("final_answer") or "").strip()
     if not final_answer:
@@ -335,4 +339,3 @@ def run_solve_pipeline(
         api_key=api_key,
         max_tokens=llm2_max_tokens,
     )
-

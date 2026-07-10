@@ -3,6 +3,7 @@ import {
   actionTextLooksLikeMissingContext,
   buildAuthoritativeTopicInstruction,
   extractTopicKeyword,
+  outlinesLookLikePromptExampleDrift,
   outlinesMatchTopic,
   slideContentLooksLikePromptLeak,
 } from '@/lib/classroom/generation';
@@ -50,6 +51,26 @@ describe('generation topic guards', () => {
 
   it('does not remove animation when animation itself is the lesson subject', () => {
     expect(extractTopicKeyword('我想学习动画原理')).toBe('动画原理');
+  });
+
+  it('does not reject document-driven outlines merely because wording differs', () => {
+    const generated = [
+      outline('企业新人入职指南', '基于上传材料梳理入职流程', ['账号开通', '合规要求']),
+    ];
+
+    expect(outlinesMatchTopic('根据上传的文档生成一份 PPT', generated)).toBe(false);
+    expect(outlinesLookLikePromptExampleDrift('根据上传的文档生成一份 PPT', generated)).toBe(false);
+  });
+
+  it('still rejects the concrete projectile-motion prompt example when it leaks', () => {
+    expect(
+      outlinesLookLikePromptExampleDrift('请给我讲讲嫦娥奔月的故事', [
+        outline('Intro to Projectile Motion', 'Explore projectile trajectories', [
+          'angle',
+          'velocity',
+        ]),
+      ]),
+    ).toBe(true);
   });
 
   it('rejects prompt instructions copied into a generated slide', () => {

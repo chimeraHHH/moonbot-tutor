@@ -41,10 +41,14 @@ import type { LessonLanguage } from '@/lib/classroom/language';
 import {
   buildAuthoritativeTopicInstruction,
   isGenerationContextValid,
-  outlinesMatchTopic,
+  outlinesLookLikePromptExampleDrift,
   traceGeneration,
   type GenerationContext,
 } from '@/lib/classroom/generation';
+import {
+  STATIC_PRESENTATION_SYSTEM_INSTRUCTION,
+  toStaticSlideOutline,
+} from '@/lib/generation/presentation-mode';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -393,6 +397,10 @@ export async function POST(req: NextRequest) {
     // Check if Interactive Mode or server-enabled Task Engine mode is enabled.
     const interactiveMode = requirements.interactiveMode ?? false;
     const taskEngineMode = resolveVocationalActive(requirements);
+    const staticPresentationMode = !interactiveMode && !taskEngineMode;
+    const presentationModeInstruction = staticPresentationMode
+      ? `\n\n${STATIC_PRESENTATION_SYSTEM_INSTRUCTION}`
+      : '';
     const promptId = taskEngineMode
       ? PROMPT_IDS.TASK_ENGINE_OUTLINES
       : interactiveMode
@@ -454,7 +462,7 @@ export async function POST(req: NextRequest) {
           const streamParams = visionImages?.length
             ? {
                 model: languageModel,
-                system: `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
+                system: `${prompts.system}${presentationModeInstruction}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
                 messages: [
                   {
                     role: 'user' as const,
@@ -468,7 +476,7 @@ export async function POST(req: NextRequest) {
               }
             : {
                 model: languageModel,
-                system: `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
+                system: `${prompts.system}${presentationModeInstruction}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
                 prompt: prompts.user,
                 maxOutputTokens: modelInfo?.outputWindow,
                 abortSignal: req.signal,
@@ -549,9 +557,12 @@ export async function POST(req: NextRequest) {
                     ...outline,
                     order: parsedOutlines.length + 1,
                   };
-                  const normalized = taskEngineMode
+                  const modeNormalized = taskEngineMode
                     ? normalizeTaskEngineOutline(enrichedBase, requirements.requirement)
                     : sanitizeNonTaskEngineOutline(enrichedBase);
+                  const normalized = staticPresentationMode
+                    ? toStaticSlideOutline(modeNormalized)
+                    : modeNormalized;
                   const enriched = ensureUniqueOutlineId(normalized, usedOutlineIds);
                   parsedOutlines.push(enriched);
 
@@ -565,12 +576,19 @@ export async function POST(req: NextRequest) {
                 }
               }
 
-              // Reject prompt-example drift before it becomes classroom state. A missing
-              // user topic used to let the system prompt's projectile-motion example pass.
+              // Reject only known prompt-example leakage before it becomes classroom
+              // state. Do not require general lexical overlap here: document-driven or
+              // concise requests often produce perfectly relevant outlines that use
+              // different words, and rejecting those made the UI repeatedly regenerate
+              // the outline while keeping its confirm button disabled.
               if (
                 generationContext &&
                 parsedOutlines.length > 0 &&
-                !outlinesMatchTopic(requirements.requirement, parsedOutlines, courseTitle || undefined)
+                outlinesLookLikePromptExampleDrift(
+                  requirements.requirement,
+                  parsedOutlines,
+                  courseTitle || undefined,
+                )
               ) {
                 lastError = 'Generated outlines do not match the requested topic';
                 traceGeneration(generationContext, 'outline.topic-mismatch', {

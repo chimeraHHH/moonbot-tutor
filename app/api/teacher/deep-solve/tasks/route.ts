@@ -24,25 +24,24 @@ export async function POST(req: NextRequest) {
     if (!question) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing required field: question');
     }
-    // NOTE: `context` is accepted from the client but the deep-solve adapter's
-    // `VideoGenerationOptions` doesn't carry a context field — the adapter itself
-    // sets `input.context = ''`. Concatenating context into the prompt is the
-    // minimal way to include it without patching the adapter.
     const context = typeof body.context === 'string' ? body.context.trim() : '';
-    const prompt = context ? `${question}\n\n补充上下文:\n${context}` : question;
 
     const baseUrl = getBaseUrl();
     try {
       const taskId = await submitDeepSolveTask(
         { providerId: 'deep-solve', apiKey: '', baseUrl },
-        { prompt, aspectRatio: '16:9' },
+        {
+          prompt: question,
+          context,
+          deepSolveMode: 'problem_solving',
+          aspectRatio: '16:9',
+        },
       );
       return apiSuccess({ taskId });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isNetwork =
-        err instanceof TypeError ||
-        /ECONNREFUSED|fetch failed|Failed to fetch|network/i.test(msg);
+        err instanceof TypeError || /ECONNREFUSED|fetch failed|Failed to fetch|network/i.test(msg);
       log.error('deep-solve submission failed:', err);
       return apiError(
         isNetwork ? 'UPSTREAM_ERROR' : 'GENERATION_FAILED',

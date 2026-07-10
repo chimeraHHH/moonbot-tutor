@@ -382,7 +382,7 @@ describe('task-engine outline route', () => {
     expect(done.outlines[0].widgetOutline.successCriteria).toBeUndefined();
   });
 
-  test('preserves model-authored scenario PBL subtype through streamed outlines', async () => {
+  test('converts model-authored scenario PBL to a static slide in standard mode', async () => {
     vi.resetModules();
     streamLLMMock.mockReset();
     resolveModelFromRequestMock.mockReset();
@@ -435,9 +435,10 @@ describe('task-engine outline route', () => {
 
     expect(outline).toBeDefined();
     expect(done).toBeDefined();
-    expect(outline?.data.pblConfig.scenarioRoleplay).toBe(true);
-    expect(done?.outlines[0].pblConfig.scenarioRoleplay).toBe(true);
-    expect(done?.outlines[0].pblConfig.scenarioBrief).toContain('朋友压力很大');
+    expect(outline?.data.type).toBe('slide');
+    expect(outline?.data.pblConfig).toBeUndefined();
+    expect(done?.outlines[0].type).toBe('slide');
+    expect(done?.outlines[0].pblConfig).toBeUndefined();
   });
 
   test('ensures streamed outline ids are unique', async () => {

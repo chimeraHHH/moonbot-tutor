@@ -58,6 +58,35 @@ export function outlinesMatchTopic(
   return fragments.some((fragment) => candidate.includes(normalize(fragment)));
 }
 
+// The outline prompts contain one concrete, fully-populated JSON example for
+// projectile motion. That example has previously leaked into model output, so
+// keep a narrow server-side rejection for it. A general lexical-overlap gate is
+// too aggressive: requests such as "make a PPT from the uploaded document"
+// legitimately produce titles that do not repeat any words from the request.
+const PROMPT_EXAMPLE_TOPICS = ['projectilemotion', '抛体运动'];
+
+export function outlinesLookLikePromptExampleDrift(
+  topic: string,
+  outlines: SceneOutline[],
+  courseTitle?: string,
+): boolean {
+  if (outlinesMatchTopic(topic, outlines, courseTitle)) return false;
+
+  const normalizedTopic = normalize(topic);
+  const candidate = normalize(
+    [
+      courseTitle,
+      ...outlines.flatMap((outline) => [outline.title, outline.description, ...outline.keyPoints]),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  return PROMPT_EXAMPLE_TOPICS.some(
+    (exampleTopic) => candidate.includes(exampleTopic) && !normalizedTopic.includes(exampleTopic),
+  );
+}
+
 const PROMPT_LEAK_MARKERS = [
   'slide content design principles',
   'slide content philosophy',

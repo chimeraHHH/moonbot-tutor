@@ -120,6 +120,27 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const publicAuthPath = isPublicAuthPath(pathname);
 
+  // Teacher and parent surfaces are disabled for the student-only competition
+  // build. Page requests return to the student workspace, while the teacher API
+  // is made unavailable instead of leaving a hidden-but-callable feature.
+  if (
+    pathname === '/teacher' ||
+    pathname.startsWith('/teacher/') ||
+    pathname === '/parent' ||
+    pathname.startsWith('/parent/')
+  ) {
+    const studentUrl = request.nextUrl.clone();
+    studentUrl.pathname = '/student';
+    studentUrl.search = '';
+    return NextResponse.redirect(studentUrl);
+  }
+  if (pathname.startsWith('/api/teacher/')) {
+    return NextResponse.json(
+      { success: false, errorCode: 'NOT_FOUND', error: 'Not found' },
+      { status: 404 },
+    );
+  }
+
   if (accessCode && !publicAuthPath) {
     // Check cookie — validate HMAC signature, not just existence
     const cookie = request.cookies.get('openmaic_access');

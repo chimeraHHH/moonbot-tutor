@@ -47,7 +47,11 @@ interface OutlinesEditorProps {
   onCollapse?: () => void;
 }
 
-const SCENE_TYPES: SceneType[] = ['slide', 'quiz', 'interactive', 'pbl'];
+const PPT_INTERACTION_CONTROLS_ENABLED = false;
+// PPT interaction scene types are disabled for the competition build. The
+// editor keeps the implementation below for later restoration, but only
+// exposes ordinary slides now.
+const SCENE_TYPES: SceneType[] = ['slide'];
 
 const TYPE_THEME: Record<
   SceneType,
@@ -621,17 +625,20 @@ function SceneRow({
             <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
               {/* Cascading control: type-specific config (left) joined to the type selector (right) */}
               <div className="inline-flex items-center overflow-hidden rounded-full">
-                {!disabled && outline.type === 'quiz' && (
+                {/* Quiz / Interactive / PBL configuration controls are disabled. */}
+                {PPT_INTERACTION_CONTROLS_ENABLED && !disabled && outline.type === 'quiz' && (
                   <QuizConfigDisclosure outline={outline} onUpdate={onUpdate} theme={theme} />
                 )}
-                {!disabled && outline.type === 'interactive' && (
-                  <InteractiveConfigDisclosure
-                    outline={outline}
-                    onUpdate={onUpdate}
-                    theme={theme}
-                  />
-                )}
-                {!disabled && outline.type === 'pbl' && (
+                {PPT_INTERACTION_CONTROLS_ENABLED &&
+                  !disabled &&
+                  outline.type === 'interactive' && (
+                    <InteractiveConfigDisclosure
+                      outline={outline}
+                      onUpdate={onUpdate}
+                      theme={theme}
+                    />
+                  )}
+                {PPT_INTERACTION_CONTROLS_ENABLED && !disabled && outline.type === 'pbl' && (
                   <PblConfigDisclosure outline={outline} onUpdate={onUpdate} theme={theme} />
                 )}
                 <TypePill
@@ -640,7 +647,7 @@ function SceneRow({
                   disabled={disabled}
                   label={sceneTypeLabel(outline.type)}
                   theme={theme}
-                  connected={!disabled && outline.type !== 'slide'}
+                  connected={false}
                 />
               </div>
               {!disabled && <DeleteSceneButton onConfirm={onRemove} />}

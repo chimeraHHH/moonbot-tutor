@@ -258,12 +258,29 @@ export interface VideoGenerationConfig {
 export interface VideoGenerationOptions {
   /** Text prompt describing the desired video */
   prompt: string;
+  /** Deep Solve planning mode. Other video providers ignore this field. */
+  deepSolveMode?: 'problem_solving' | 'narrative_storyboard';
+  /** Optional free-form source context for explicit problem-solving requests. */
+  context?: string;
+  /** Structured page context used by Deep Solve narrative storyboard generation. */
+  narrativeContext?: NarrativeVideoContext;
   /** Desired video duration in seconds */
   duration?: number;
   /** Desired aspect ratio */
   aspectRatio?: '16:9' | '4:3' | '1:1' | '9:16' | '3:4' | '21:9';
   /** Desired output resolution */
   resolution?: '480p' | '720p' | '1080p';
+}
+
+export interface NarrativeVideoContext {
+  pageTitle: string;
+  teachingNote: string;
+  keyPoints: string[];
+  teachingObjective?: string;
+  courseTitle?: string;
+  courseDescription?: string;
+  targetLanguage: string;
+  languageDirective?: string;
 }
 
 /**
@@ -306,6 +323,12 @@ export interface MediaGenerationRequest {
   aspectRatio?: '16:9' | '4:3' | '1:1' | '9:16';
   /** Optional artistic style hint */
   style?: string;
+}
+
+/** Runtime-enriched request. The persisted outline schema remains provider-agnostic. */
+export interface MediaGenerationJob extends MediaGenerationRequest {
+  deepSolveMode?: VideoGenerationOptions['deepSolveMode'];
+  narrativeContext?: NarrativeVideoContext;
 }
 
 /**

@@ -53,12 +53,12 @@ function LoginForm() {
             SophosEdu
           </div>
           <div className="max-w-xl pb-12">
-            <p className="text-sm font-medium text-muted-foreground">AI interactive classroom</p>
+            <p className="text-sm font-medium text-muted-foreground">AI-powered classroom</p>
             <h1 className="mt-4 text-5xl font-semibold tracking-normal">
               Sign in to manage learning workspaces.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
-              Role-based access keeps student, teacher, parent, and admin workflows separated.
+              Sign in to continue to the student learning workspace.
             </p>
           </div>
         </section>

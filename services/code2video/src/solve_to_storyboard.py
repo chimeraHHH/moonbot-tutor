@@ -22,9 +22,9 @@ def _fallback_video_sections_from_steps(steps: List[SolveStep], final_answer: st
         sections.append(
             VideoSection(
                 id=f"section_{idx}",
-                title=f"Solve Part {idx}",
+                title=f"讲解第 {idx} 部分",
                 lecture_lines=chunk,
-                animations=[f"Animate and explain: {line}" for line in chunk],
+                animations=[f"动画展示并讲解：{line}" for line in chunk],
             )
         )
     return sections
@@ -32,7 +32,7 @@ def _fallback_video_sections_from_steps(steps: List[SolveStep], final_answer: st
 
 def _normalize_section(section: VideoSection, default_idx: int, fallback_line: str) -> Dict[str, Any]:
     section_id = section.id.strip() or f"section_{default_idx}"
-    title = section.title.strip() or f"Solve Part {default_idx}"
+    title = section.title.strip() or f"讲解第 {default_idx} 部分"
     lecture_lines = [line.strip() for line in section.lecture_lines if line and line.strip()]
     if not lecture_lines and fallback_line.strip():
         lecture_lines = [fallback_line.strip()]
@@ -40,7 +40,7 @@ def _normalize_section(section: VideoSection, default_idx: int, fallback_line: s
     animations = [line.strip() for line in section.animations if line and line.strip()]
     if len(animations) < len(lecture_lines):
         missing = len(lecture_lines) - len(animations)
-        animations.extend([f"Animate and explain: {line}" for line in lecture_lines[-missing:]])
+        animations.extend([f"动画展示并讲解：{line}" for line in lecture_lines[-missing:]])
 
     return {
         "id": section_id,
@@ -142,4 +142,3 @@ def render_with_existing_agent_pipeline(agent: Any, storyboard: Dict[str, Any], 
     agent.generate_codes()
     agent.render_all_sections(max_workers=max_render_workers)
     return agent.merge_videos()
-

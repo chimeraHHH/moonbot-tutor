@@ -36,6 +36,14 @@ const MAX_POLL_ATTEMPTS = 360; // 360 × 5s = 30 min
 const RENDER_WIDTH = 854;
 const RENDER_HEIGHT = 480;
 
+const SIMPLIFIED_CHINESE_OUTPUT_CONTEXT = [
+  '输出语言强制要求：',
+  '1. 视频中所有可见文字，包括标题、标签、注释、步骤说明，必须使用简体中文。',
+  '2. 所有旁白和 TTS 文本必须使用简体中文，不得使用英文叙述。',
+  '3. 数学公式、通用符号和必要的专有名词可保留原样，其余内容全部中文化。',
+  '4. 即使输入描述是英文，也只用它理解画面需求，最终视频仍必须为中文。',
+].join('\n');
+
 function rootUrl(config: VideoGenerationConfig): string {
   return (config.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
 }
@@ -72,18 +80,37 @@ interface DeepSolveStatus {
 }
 
 /**
- * Submit a deep-solve task. `options.prompt` is used as the problem/topic
- * ("question"); `options.style`-like context isn't part of the video options,
- * so context is left empty here (callers may enrich it later).
+ * Submit a deep-solve task. PPT callers use narrative_storyboard with the
+ * current page's structured teaching context; explicit solve callers retain
+ * problem_solving for backward compatibility.
  */
 export async function submitDeepSolveTask(
   config: VideoGenerationConfig,
   options: VideoGenerationOptions,
 ): Promise<string> {
   const base = rootUrl(config);
+  const narrativeContext = options.narrativeContext;
   const body: Record<string, unknown> = {
     engine: 'code2video',
-    input: { question: options.prompt, context: '' },
+    input: {
+      question: options.prompt,
+      context: [SIMPLIFIED_CHINESE_OUTPUT_CONTEXT, options.context].filter(Boolean).join('\n\n'),
+      mode: options.deepSolveMode || 'problem_solving',
+      ...(narrativeContext
+        ? {
+            narrative_context: {
+              page_title: narrativeContext.pageTitle,
+              teaching_note: narrativeContext.teachingNote,
+              key_points: narrativeContext.keyPoints,
+              teaching_objective: narrativeContext.teachingObjective || '',
+              course_title: narrativeContext.courseTitle || '',
+              course_description: narrativeContext.courseDescription || '',
+              target_language: narrativeContext.targetLanguage,
+              language_directive: narrativeContext.languageDirective || '',
+            },
+          }
+        : {}),
+    },
   };
   const runtime = buildRuntime();
   if (runtime) body.runtime = runtime;
@@ -104,6 +131,17 @@ export async function submitDeepSolveTask(
     throw new Error('Deep Solve returned empty task_id');
   }
   return data.task_id;
+}
+
+/** Extract the bridge task id so the Next.js route can expose a same-origin download URL. */
+export function deepSolveTaskIdFromVideoUrl(videoUrl: string): string | null {
+  try {
+    const pathname = new URL(videoUrl).pathname;
+    const match = pathname.match(/\/api\/v1\/deep-solve\/tasks\/([^/]+)\/video\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -129,8 +167,10 @@ export async function pollDeepSolveTask(
     if (!finalArtifact) {
       throw new Error('Deep Solve succeeded but no final_video artifact was returned');
     }
-    // Prefer the bridge-provided URL; otherwise construct the download route.
-    const url = finalArtifact.url || `${base}${API_PREFIX}/tasks/${taskId}/video`;
+    // Always use the canonical task download endpoint. The caller rewrites this
+    // bridge URL to a same-origin route for browsers, so arbitrary artifact URLs
+    // must not bypass that controlled path.
+    const url = `${base}${API_PREFIX}/tasks/${taskId}/video`;
     return {
       url,
       duration: 0,

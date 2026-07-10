@@ -7,7 +7,11 @@
  */
 
 import { create } from 'zustand';
-import type { MediaGenerationRequest } from '@/lib/media/types';
+import type {
+  MediaGenerationJob,
+  NarrativeVideoContext,
+  VideoGenerationOptions,
+} from '@/lib/media/types';
 import { db } from '@/lib/utils/database';
 import { createLogger } from '@/lib/logger';
 
@@ -26,6 +30,8 @@ export interface MediaTask {
     aspectRatio?: string;
     style?: string;
     duration?: number;
+    deepSolveMode?: VideoGenerationOptions['deepSolveMode'];
+    narrativeContext?: NarrativeVideoContext;
   };
   objectUrl?: string; // URL.createObjectURL() for rendering
   poster?: string; // Video poster objectUrl
@@ -39,7 +45,7 @@ interface MediaGenerationState {
   tasks: Record<string, MediaTask>;
 
   // Batch enqueue
-  enqueueTasks: (stageId: string, requests: MediaGenerationRequest[]) => void;
+  enqueueTasks: (stageId: string, requests: MediaGenerationJob[]) => void;
 
   // Status transitions
   markGenerating: (elementId: string) => void;
@@ -86,6 +92,8 @@ export const useMediaGenerationStore = create<MediaGenerationState>()((set, get)
         params: {
           aspectRatio: req.aspectRatio,
           style: req.style,
+          deepSolveMode: req.deepSolveMode,
+          narrativeContext: req.narrativeContext,
         },
         retryCount: 0,
         stageId,

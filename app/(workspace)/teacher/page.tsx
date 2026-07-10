@@ -1,5 +1,6 @@
-import { TeacherWorkbench } from '@/components/teacher/teacher-workbench';
+import { redirect } from 'next/navigation';
 
 export default function TeacherPage() {
-  return <TeacherWorkbench />;
+  // Teacher workspace is disabled for the student-only competition build.
+  redirect('/student');
 }

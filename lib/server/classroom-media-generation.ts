@@ -36,6 +36,7 @@ import type { VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
+import { buildNarrativeVideoContext } from '@/lib/media/narrative-context';
 
 const log = createLogger('ClassroomMedia');
 
@@ -79,6 +80,12 @@ export async function generateMediaForClassroom(
   outlines: SceneOutline[],
   classroomId: string,
   baseUrl: string,
+  courseContext: {
+    title?: string;
+    description?: string;
+    targetLanguage?: string;
+    languageDirective?: string;
+  } = {},
 ): Promise<Record<string, string>> {
   const mediaDir = path.join(CLASSROOMS_DIR, classroomId, 'media');
   await ensureDir(mediaDir);
@@ -96,7 +103,11 @@ export async function generateMediaForClassroom(
   // Separate image and video requests, generate each type sequentially
   // but run the two types in parallel (providers often have limited concurrency).
   const imageRequests = requests.filter((r) => r.type === 'image' && imageProviderIds.length > 0);
-  const videoRequests = requests.filter((r) => r.type === 'video' && videoProviderIds.length > 0);
+  const videoRequests = outlines.flatMap((outline) =>
+    (outline.mediaGenerations ?? [])
+      .filter((request) => request.type === 'video' && videoProviderIds.length > 0)
+      .map((request) => ({ request, outline })),
+  );
 
   const generateImages = async () => {
     for (const req of imageRequests) {
@@ -140,7 +151,7 @@ export async function generateMediaForClassroom(
   };
 
   const generateVideos = async () => {
-    for (const req of videoRequests) {
+    for (const { request: req, outline } of videoRequests) {
       try {
         const providerId = videoProviderIds[0] as VideoProviderId;
         const apiKey = resolveVideoApiKey(providerId);
@@ -156,6 +167,8 @@ export async function generateMediaForClassroom(
         const normalized = normalizeVideoOptions(providerId, {
           prompt: req.prompt,
           aspectRatio: (req.aspectRatio as '16:9' | '4:3' | '1:1' | '9:16') || '16:9',
+          deepSolveMode: 'narrative_storyboard',
+          narrativeContext: buildNarrativeVideoContext(outline, courseContext),
         });
 
         const result = await generateVideo(

@@ -56,7 +56,12 @@ interface RecentJob {
   ownerEmail: string | null;
 }
 
-const ROLE_OPTIONS: Role[] = ['student', 'teacher', 'parent', 'admin'];
+const ROLE_OPTIONS: Role[] = [
+  'student',
+  // 'teacher',
+  // 'parent',
+  'admin',
+];
 const STATUS_OPTIONS: Status[] = ['active', 'disabled'];
 
 export function AdminDashboard({ currentUserId }: { currentUserId: string }) {

@@ -44,7 +44,6 @@ import {
   getGenerationStepText,
 } from './types';
 import { StepVisualizer } from './components/visualizers';
-import { resolveTaskEngineModeFromOutlineDoneEvent } from './vocational-mode';
 import { buildConfirmedOutlineSession, GenerationRunGate } from './generation-run-gate';
 import { resolveLessonLanguage } from '@/lib/classroom/language';
 import { createPeerAgentClassroomState } from '@/lib/classroom/peer-agents';
@@ -58,6 +57,10 @@ import {
   traceGeneration,
   type GenerationContext,
 } from '@/lib/classroom/generation';
+import {
+  toStaticSlideOutline,
+  withoutPresentationInteractions,
+} from '@/lib/generation/presentation-mode';
 
 const log = createLogger('GenerationPreview');
 const OUTLINE_REVIEW_AUTO_CONTINUE_MS = 2500;
@@ -181,10 +184,14 @@ function GenerationPreviewContent() {
           ...(parsed as GenerationSessionState),
           classroomId: parsed.classroomId || nanoid(10),
           generationId: parsed.generationId || nanoid(),
+          requirements: withoutPresentationInteractions(parsed.requirements),
+          taskEngineMode: false,
+          sceneOutlines: parsed.sceneOutlines?.map(toStaticSlideOutline),
         };
-        replaceGenerationSession(sessionStorage, normalized);
         if (!normalized.previewPhase) {
-          normalized.previewPhase = normalized.sceneOutlines?.length ? 'outline-ready' : 'preparing';
+          normalized.previewPhase = normalized.sceneOutlines?.length
+            ? 'outline-ready'
+            : 'preparing';
         }
         // Restore review intent: a saved 'review' phase without outlines means the user
         // had opened the editor mid-stream before the refresh — preserve that intent so
@@ -192,7 +199,10 @@ function GenerationPreviewContent() {
         if (normalized.previewPhase === 'review' && !normalized.sceneOutlines?.length) {
           outlineReviewIntentRef.current = true;
         }
-        normalized.taskEngineMode = normalized.taskEngineMode === true;
+        normalized.taskEngineMode = false;
+        // Persist the fully normalized phase as well so sessionStorage and the
+        // first rendered state cannot disagree during refresh or hot reload.
+        replaceGenerationSession(sessionStorage, normalized);
         setSession(normalized);
         traceGeneration(
           {
@@ -293,7 +303,14 @@ function GenerationPreviewContent() {
     const signal = controller.signal;
 
     // Use a local mutable copy so we can update it after document extraction
-    let currentSession = generationSession;
+    // Ignore interaction flags/outlines left by old localStorage sessions. The
+    // competition flow produces static PPT slides only.
+    let currentSession: GenerationSessionState = {
+      ...generationSession,
+      requirements: withoutPresentationInteractions(generationSession.requirements),
+      taskEngineMode: false,
+      sceneOutlines: generationSession.sceneOutlines?.map(toStaticSlideOutline),
+    };
 
     const ensureCurrentGeneration = () => {
       const raw = sessionStorage.getItem(GENERATION_SESSION_STORAGE_KEY);
@@ -548,8 +565,8 @@ function GenerationPreviewContent() {
         style: 'professional',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        interactiveMode: !!currentSession.requirements.interactiveMode,
-        taskEngineMode: currentSession.taskEngineMode === true,
+        interactiveMode: false,
+        taskEngineMode: false,
         lessonLanguage,
         // Kept for old consumers and imported classrooms; new code reads lessonLanguage.
         languageDirective: lessonLanguage.instruction,
@@ -625,7 +642,10 @@ function GenerationPreviewContent() {
                         } else if (evt.type === 'courseTitle') {
                           title = evt.data;
                         } else if (evt.type === 'outline') {
-                          if (evt.generationContext && !isSameGeneration(evt.generationContext, generationContext)) {
+                          if (
+                            evt.generationContext &&
+                            !isSameGeneration(evt.generationContext, generationContext)
+                          ) {
                             traceGeneration(generationContext, 'outline.event.discarded');
                             continue;
                           }
@@ -641,7 +661,10 @@ function GenerationPreviewContent() {
                           setStreamingOutlines([]);
                           setStatusMessage(t('generation.outlineRetrying'));
                         } else if (evt.type === 'done') {
-                          if (!isSameGeneration(evt.generationContext, generationContext)) {
+                          if (
+                            evt.generationContext &&
+                            !isSameGeneration(evt.generationContext, generationContext)
+                          ) {
                             reject(new DOMException('Stale outline result', 'AbortError'));
                             return;
                           }
@@ -649,7 +672,7 @@ function GenerationPreviewContent() {
                             outlines: evt.outlines || collected,
                             languageDirective: lessonLanguage.instruction,
                             courseTitle: evt.courseTitle || title,
-                            taskEngineMode: resolveTaskEngineModeFromOutlineDoneEvent(evt),
+                            taskEngineMode: false,
                           });
                           return;
                         } else if (evt.type === 'error') {
@@ -686,11 +709,11 @@ function GenerationPreviewContent() {
             .catch(reject);
         });
 
-        outlines = outlineResult.outlines;
+        outlines = outlineResult.outlines.map(toStaticSlideOutline);
         ensureCurrentGeneration();
         languageDirective = outlineResult.languageDirective;
         courseTitle = outlineResult.courseTitle;
-        const effectiveTaskEngineMode = outlineResult.taskEngineMode;
+        const effectiveTaskEngineMode = false;
         setIsOutlineStreaming(false);
 
         // Mid-stream review intent (sticky ref) overrides the auto-continue timer.
@@ -706,7 +729,8 @@ function GenerationPreviewContent() {
           taskEngineMode: effectiveTaskEngineMode,
           previewPhase: shouldReviewOutlines ? 'review' : 'outline-ready',
         };
-        if (!persistSession(updatedSession)) throw new DOMException('Stale generation result', 'AbortError');
+        if (!persistSession(updatedSession))
+          throw new DOMException('Stale generation result', 'AbortError');
         currentSession = updatedSession;
         setStreamingOutlines(outlines);
 
@@ -720,7 +744,8 @@ function GenerationPreviewContent() {
           taskEngineMode: effectiveTaskEngineMode,
           previewPhase: 'generating-content',
         };
-        if (!persistSession(currentSession)) throw new DOMException('Stale generation result', 'AbortError');
+        if (!persistSession(currentSession))
+          throw new DOMException('Stale generation result', 'AbortError');
 
         // User has committed to course generation (either by confirming the
         // outline review or by letting the auto-continue timer fire). Now it's
@@ -1183,13 +1208,13 @@ function GenerationPreviewContent() {
     if (isOutlineStreaming) return;
     persistSession({
       ...session,
-      sceneOutlines: outlines,
+      sceneOutlines: outlines.map(toStaticSlideOutline),
       previewPhase: 'review',
     });
   };
 
   const handleConfirmOutlines = () => {
-    const finalOutlines = session?.sceneOutlines ?? streamingOutlines;
+    const finalOutlines = (session?.sceneOutlines ?? streamingOutlines)?.map(toStaticSlideOutline);
     if (!finalOutlines || finalOutlines.length === 0) return;
     if (!session) return;
 

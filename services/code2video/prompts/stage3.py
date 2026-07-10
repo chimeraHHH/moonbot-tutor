@@ -19,6 +19,15 @@ provided `self.teach(...)` helper. Do NOT use external audio files.
 - EVERY visual step that teaches something MUST go through `self.teach(...)`.
 - Do NOT call `self.voiceover(...)`, `self.set_speech_service(...)`, `self.add_sound(...)`,
   or bare `self.play(...)` for teaching content. (Only `self.teach` narrates.)
+- Every narration string passed to `self.teach(...)` MUST be Simplified Chinese.
+
+2A. OUTPUT LANGUAGE (MANDATORY):
+- Every user-visible title, label, annotation, caption, and explanatory Text/MarkupText string
+  MUST be Simplified Chinese, even when the original request or animation description is English.
+- Every `Text(...)` or `MarkupText(...)` object containing Chinese MUST set `font=CHINESE_FONT`.
+  Keep formulas in `MathTex(...)`; do not put Chinese prose inside `MathTex(...)`.
+- English is allowed only in mathematical formulas, universal symbols, code identifiers, and
+  indispensable proper nouns. Never add English explanatory sentences to the rendered video.
 
 3. POSITIONING (provided by TeachingScene):
 - `self.place_at_grid(obj, 'B2', scale_factor=0.8)` or `self.place_in_area(obj, 'A1', 'C3', 0.7)`.

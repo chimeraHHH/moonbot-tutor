@@ -54,7 +54,7 @@ function RegisterForm() {
             SophosEdu
           </div>
           <div className="max-w-xl pb-12">
-            <p className="text-sm font-medium text-muted-foreground">AI interactive classroom</p>
+            <p className="text-sm font-medium text-muted-foreground">AI-powered classroom</p>
             <h1 className="mt-4 text-5xl font-semibold tracking-normal">
               Create your learning workspace account.
             </h1>

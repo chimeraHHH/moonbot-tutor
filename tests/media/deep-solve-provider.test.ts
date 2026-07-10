@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
-import { submitDeepSolveTask, pollDeepSolveTask } from '@/lib/media/adapters/deep-solve-adapter';
+import {
+  submitDeepSolveTask,
+  pollDeepSolveTask,
+  deepSolveTaskIdFromVideoUrl,
+} from '@/lib/media/adapters/deep-solve-adapter';
 import type { VideoGenerationConfig, VideoGenerationOptions } from '@/lib/media/types';
 
 const config: VideoGenerationConfig = {
@@ -46,6 +50,46 @@ describe('Deep Solve video provider', () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.engine).toBe('code2video');
     expect(body.input.question).toBe(options.prompt);
+    expect(body.input.context).toContain('所有旁白和 TTS 文本必须使用简体中文');
+    expect(body.input.mode).toBe('problem_solving');
+  });
+
+  it('submits structured page context for narrative storyboard mode', async () => {
+    const fetchMock = mockFetchOnce(202, { task_id: 'narrative-task' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await submitDeepSolveTask(config, {
+      ...options,
+      deepSolveMode: 'narrative_storyboard',
+      narrativeContext: {
+        pageTitle: '从混沌初开到人类繁衍',
+        teachingNote: '盘古与女娲代表先民对宇宙起源的浪漫解读。',
+        keyPoints: ['盘古开天辟地', '女娲创造人类'],
+        targetLanguage: 'zh-CN',
+      },
+    });
+
+    const [, init] = (fetchMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.input.mode).toBe('narrative_storyboard');
+    expect(body.input.narrative_context).toMatchObject({
+      page_title: '从混沌初开到人类繁衍',
+      teaching_note: '盘古与女娲代表先民对宇宙起源的浪漫解读。',
+      key_points: ['盘古开天辟地', '女娲创造人类'],
+      target_language: 'zh-CN',
+    });
+  });
+
+  it('extracts a task id for the same-origin video download route', () => {
+    expect(
+      deepSolveTaskIdFromVideoUrl(
+        'http://localhost:8010/api/v1/deep-solve/tasks/dsv_20260703_abcd1234/video',
+      ),
+    ).toBe('dsv_20260703_abcd1234');
+    expect(deepSolveTaskIdFromVideoUrl('https://cdn.example.com/final.mp4')).toBeNull();
   });
 
   it('returns null while the task is still running', async () => {
@@ -69,7 +113,7 @@ describe('Deep Solve video provider', () => {
     expect(result?.height).toBe(480);
   });
 
-  it('prefers a bridge-provided artifact url when present', async () => {
+  it('uses the canonical task download URL even when the artifact includes a URL', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetchOnce(200, {
@@ -79,7 +123,7 @@ describe('Deep Solve video provider', () => {
       }),
     );
     const result = await pollDeepSolveTask(config, 't');
-    expect(result?.url).toBe('http://host/dl.mp4');
+    expect(result?.url).toBe('http://localhost:8010/api/v1/deep-solve/tasks/t/video');
   });
 
   it('throws when the task failed', async () => {

@@ -2,7 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { GraduationCap, LogOut, Presentation, Shield, Users } from 'lucide-react';
+import {
+  GraduationCap,
+  LogOut,
+  // Presentation,
+  Shield,
+  // Users,
+} from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { UserRole } from '@/lib/server/auth-types';
 import { cn } from '@/lib/utils';
@@ -23,18 +29,18 @@ const ROLES: RoleItem[] = [
     icon: GraduationCap,
     roles: ['student', 'admin'],
   },
-  {
-    href: '/teacher',
-    labelKey: 'workspace.sidebar.teacher',
-    icon: Presentation,
-    roles: ['teacher', 'admin'],
-  },
-  {
-    href: '/parent',
-    labelKey: 'workspace.sidebar.parent',
-    icon: Users,
-    roles: ['parent', 'admin'],
-  },
+  // {
+  //   href: '/teacher',
+  //   labelKey: 'workspace.sidebar.teacher',
+  //   icon: Presentation,
+  //   roles: ['teacher', 'admin'],
+  // },
+  // {
+  //   href: '/parent',
+  //   labelKey: 'workspace.sidebar.parent',
+  //   icon: Users,
+  //   roles: ['parent', 'admin'],
+  // },
   { href: '/admin', labelKey: 'workspace.sidebar.admin', icon: Shield, roles: ['admin'] },
 ];
 

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from manim import VGroup, Text, WHITE, UP, DOWN, LEFT
+from manimpango import list_fonts
 from manim_voiceover import VoiceoverScene
 from manim_voiceover.helper import remove_bookmarks
 from manim_voiceover.services.base import (
@@ -41,6 +42,26 @@ DOUBAO_URL = os.getenv(
 # Default voice depends on the backend (edge uses zh-CN-*, Doubao uses *_bigtts).
 DEFAULT_VOICE = "zh_female_vv_uranus_bigtts" if DOUBAO_KEY else "zh-CN-XiaoxiaoNeural"
 VOICE = os.getenv("C2V_TTS_VOICE", DEFAULT_VOICE)
+
+
+def _resolve_chinese_font() -> str:
+    explicit = os.getenv("C2V_CHINESE_FONT", "").strip()
+    if explicit:
+        return explicit
+    available = set(list_fonts())
+    for candidate in (
+        "PingFang SC",
+        "Noto Sans CJK SC",
+        "Microsoft YaHei",
+        "SimHei",
+        "Arial Unicode MS",
+    ):
+        if candidate in available:
+            return candidate
+    return "sans-serif"
+
+
+CHINESE_FONT = _resolve_chinese_font()
 
 
 class EdgeTTSService(SpeechService):
@@ -192,13 +213,16 @@ class TeachingScene(VoiceoverScene):
         self.set_speech_service(make_speech_service())
 
         self.camera.background_color = "#000000"
-        self.title = Text(title_text, font_size=28, color=WHITE).to_edge(UP)
+        self.title = Text(title_text, font=CHINESE_FONT, font_size=28, color=WHITE).to_edge(UP)
         self.add(self.title)
 
         # Optional left-side lecture bullets (visual only). Narration is spoken
         # separately via self.teach(...).
         if lecture_lines:
-            lecture_texts = [Text(line, font_size=22, color=WHITE) for line in lecture_lines]
+            lecture_texts = [
+                Text(line, font=CHINESE_FONT, font_size=22, color=WHITE)
+                for line in lecture_lines
+            ]
             self.lecture = VGroup(*lecture_texts).arrange(DOWN, aligned_edge=LEFT).scale(0.8)
             self.lecture.to_edge(LEFT, buff=0.2)
             self.add(self.lecture)

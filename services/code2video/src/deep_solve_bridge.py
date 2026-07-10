@@ -102,7 +102,7 @@ def compose_question(question: str, context: str) -> str:
     q = (question or "").strip()
     c = (context or "").strip()
     if q and c:
-        return f"{q}\n\nContext:\n{c}"
+        return f"{q}\n\n补充要求：\n{c}"
     return q or c
 
 
@@ -158,9 +158,22 @@ class ClientContext(BaseModel):
     session_id: Optional[str] = None
 
 
+class NarrativeContext(BaseModel):
+    page_title: str = ""
+    teaching_note: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    teaching_objective: str = ""
+    course_title: str = ""
+    course_description: str = ""
+    target_language: str = "zh-CN"
+    language_directive: str = ""
+
+
 class DeepSolveInput(BaseModel):
     question: str
     context: str = ""
+    mode: Literal["problem_solving", "narrative_storyboard"] = "problem_solving"
+    narrative_context: NarrativeContext = Field(default_factory=NarrativeContext)
 
 
 class CreateTaskRequest(BaseModel):
@@ -548,6 +561,8 @@ class DeepSolveTaskManager:
                 "input_summary": {
                     "question": bundle.req.input.question,
                     "context": bundle.req.input.context,
+                    "mode": bundle.req.input.mode,
+                    "narrative_context": bundle.req.input.narrative_context.model_dump(),
                 },
                 "runtime": {
                     "provider": bundle.req.runtime.provider or "gpt-41",
@@ -572,7 +587,11 @@ class DeepSolveTaskManager:
             final_video_path = bundle.context.get("final_video_path")
             await self._set_task_succeeded(
                 bundle,
-                summary="Solve pipeline completed successfully",
+                summary=(
+                    "Narrative storyboard pipeline completed successfully"
+                    if bundle.req.input.mode == "narrative_storyboard"
+                    else "Solve pipeline completed successfully"
+                ),
                 final_video_path=final_video_path,
             )
         except CancelledByUser:
@@ -589,6 +608,7 @@ class DeepSolveTaskManager:
             await self._set_task_failed(bundle, stage=stage, err=err)
 
     async def _execute_pipeline(self, bundle: TaskBundle) -> None:
+        from narrative_pipeline import run_narrative_brief, run_narrative_storyboard
         from solve_pipeline import run_llm1_solve_text, run_llm2_solve_plan
         from solve_to_storyboard import apply_storyboard_to_agent, solve_plan_file_to_storyboard_file
 
@@ -598,9 +618,10 @@ class DeepSolveTaskManager:
         bundle.context["agent"] = agent
         bundle.context["output_dir"] = output_dir
 
+        is_narrative = bundle.req.input.mode == "narrative_storyboard"
         question_input = compose_question(bundle.req.input.question, bundle.req.input.context)
         if not question_input.strip():
-            raise ValueError("Question is required for solve pipeline")
+            raise ValueError("Input prompt is required for deep-solve pipeline")
 
         runtime = bundle.req.runtime
         options = bundle.req.options
@@ -611,72 +632,148 @@ class DeepSolveTaskManager:
 
         solution_path = output_dir / "solution.txt"
         solve_plan_path = output_dir / "solve_plan.json"
-        storyboard_path = output_dir / "storyboard_from_solve.json"
+        narrative_brief_path = output_dir / "narrative_brief.txt"
+        storyboard_path = output_dir / (
+            "narrative_storyboard.json" if is_narrative else "storyboard_from_solve.json"
+        )
+        narrative_context = bundle.req.input.narrative_context.model_dump()
 
         # Stage 1: llm1
         stage = "llm1"
-        await self._set_stage_running(bundle, stage=stage, title="Run Solve LLM1")
-        await self._emit_stage_log(bundle, stage, "Generating solution text from question.")
-        solution_text = await asyncio.to_thread(
-            run_llm1_solve_text,
-            question=question_input,
-            output_path=solution_path,
-            model=llm1_model,
-            base_url=base_url,
-            api_key=api_key,
-            max_tokens=4000,
+        await self._set_stage_running(
+            bundle,
+            stage=stage,
+            title="Build narrative brief" if is_narrative else "Run Solve LLM1",
         )
-        await self._record_artifact(bundle, "solution_text", solution_path)
+        if is_narrative:
+            await self._emit_stage_log(bundle, stage, "Building a source-faithful narrative brief.")
+            planning_text = await asyncio.to_thread(
+                run_narrative_brief,
+                prompt=bundle.req.input.question,
+                narrative_context=narrative_context,
+                output_path=narrative_brief_path,
+                model=llm1_model,
+                base_url=base_url,
+                api_key=api_key,
+                max_tokens=4000,
+            )
+            stage_one_path = narrative_brief_path
+            stage_one_kind = "narrative_brief"
+        else:
+            await self._emit_stage_log(bundle, stage, "Generating solution text from question.")
+            planning_text = await asyncio.to_thread(
+                run_llm1_solve_text,
+                question=question_input,
+                output_path=solution_path,
+                model=llm1_model,
+                base_url=base_url,
+                api_key=api_key,
+                max_tokens=4000,
+            )
+            stage_one_path = solution_path
+            stage_one_kind = "solution_text"
+        await self._record_artifact(bundle, stage_one_kind, stage_one_path)
         await self._set_stage_succeeded(bundle, stage, "LLM1 completed")
         await self._emit_stage_result(
             bundle,
             stage,
-            {
-                "solution_path": str(solution_path.resolve()),
-                "solution_preview": (solution_text or "")[:4000],
-                "token_usage": None,
-            },
+            (
+                {
+                    "narrative_brief_path": str(stage_one_path.resolve()),
+                    "narrative_brief_preview": (planning_text or "")[:4000],
+                    "mode": bundle.req.input.mode,
+                    "token_usage": None,
+                }
+                if is_narrative
+                else {
+                    "solution_path": str(stage_one_path.resolve()),
+                    "solution_preview": (planning_text or "")[:4000],
+                    "token_usage": None,
+                }
+            ),
         )
         self._raise_if_cancelled(bundle)
 
         # Stage 2: llm2
         stage = "llm2"
-        await self._set_stage_running(bundle, stage=stage, title="Run Solve LLM2")
-        await self._emit_stage_log(bundle, stage, "Structuring solution into solve_plan.json.")
-        plan = await asyncio.to_thread(
-            run_llm2_solve_plan,
-            question=question_input,
-            solution=(solution_text or "").strip() or read_text_preview(solution_path, limit=12000),
-            output_path=solve_plan_path,
-            model=llm2_model,
-            base_url=base_url,
-            api_key=api_key,
-            max_tokens=4000,
+        await self._set_stage_running(
+            bundle,
+            stage=stage,
+            title="Build narrative storyboard" if is_narrative else "Run Solve LLM2",
         )
-        sections_count = len(getattr(plan, "video_sections", []) or [])
-        await self._record_artifact(bundle, "solve_plan", solve_plan_path)
+        if is_narrative:
+            await self._emit_stage_log(bundle, stage, "Structuring the narrative brief into storyboard sections.")
+            storyboard = await asyncio.to_thread(
+                run_narrative_storyboard,
+                prompt=bundle.req.input.question,
+                brief=(planning_text or "").strip()
+                or read_text_preview(narrative_brief_path, limit=12000),
+                narrative_context=narrative_context,
+                output_path=storyboard_path,
+                model=llm2_model,
+                base_url=base_url,
+                api_key=api_key,
+                max_tokens=4000,
+            )
+            sections_count = len((storyboard or {}).get("sections", []))
+            stage_two_path = storyboard_path
+            stage_two_kind = "narrative_storyboard"
+        else:
+            await self._emit_stage_log(bundle, stage, "Structuring solution into solve_plan.json.")
+            plan = await asyncio.to_thread(
+                run_llm2_solve_plan,
+                question=question_input,
+                solution=(planning_text or "").strip()
+                or read_text_preview(solution_path, limit=12000),
+                output_path=solve_plan_path,
+                model=llm2_model,
+                base_url=base_url,
+                api_key=api_key,
+                max_tokens=4000,
+            )
+            sections_count = len(getattr(plan, "video_sections", []) or [])
+            stage_two_path = solve_plan_path
+            stage_two_kind = "solve_plan"
+        await self._record_artifact(bundle, stage_two_kind, stage_two_path)
         await self._set_stage_succeeded(bundle, stage, "LLM2 completed")
         await self._emit_stage_result(
             bundle,
             stage,
-            {
-                "solve_plan_path": str(solve_plan_path.resolve()),
-                "solve_plan_preview": read_json_preview(solve_plan_path),
-                "sections_count": sections_count,
-                "token_usage": None,
-            },
+            (
+                {
+                    "narrative_storyboard_path": str(stage_two_path.resolve()),
+                    "narrative_storyboard_preview": read_json_preview(stage_two_path),
+                    "sections_count": sections_count,
+                    "mode": bundle.req.input.mode,
+                    "token_usage": None,
+                }
+                if is_narrative
+                else {
+                    "solve_plan_path": str(stage_two_path.resolve()),
+                    "solve_plan_preview": read_json_preview(stage_two_path),
+                    "sections_count": sections_count,
+                    "token_usage": None,
+                }
+            ),
         )
         self._raise_if_cancelled(bundle)
 
         # Stage 3: storyboard
         stage = "storyboard"
-        await self._set_stage_running(bundle, stage=stage, title="Convert solve plan to storyboard")
-        await self._emit_stage_log(bundle, stage, "Adapting solve plan into storyboard sections.")
-        storyboard = await asyncio.to_thread(
-            solve_plan_file_to_storyboard_file,
-            solve_plan_path=solve_plan_path,
-            storyboard_path=storyboard_path,
+        await self._set_stage_running(
+            bundle,
+            stage=stage,
+            title="Validate narrative storyboard" if is_narrative else "Convert solve plan to storyboard",
         )
+        if is_narrative:
+            await self._emit_stage_log(bundle, stage, "Narrative storyboard validated and ready for animation.")
+        else:
+            await self._emit_stage_log(bundle, stage, "Adapting solve plan into storyboard sections.")
+            storyboard = await asyncio.to_thread(
+                solve_plan_file_to_storyboard_file,
+                solve_plan_path=solve_plan_path,
+                storyboard_path=storyboard_path,
+            )
         storyboard_sections = len((storyboard or {}).get("sections", []))
         await self._record_artifact(bundle, "storyboard", storyboard_path)
         await self._set_stage_succeeded(bundle, stage, "Storyboard generated")

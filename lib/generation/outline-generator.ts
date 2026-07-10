@@ -19,6 +19,11 @@ import type { AICallFn, GenerationResult, GenerationCallbacks } from './pipeline
 import { createLogger } from '@/lib/logger';
 import { resolveLessonLanguage } from '@/lib/classroom/language';
 import { buildAuthoritativeTopicInstruction } from '@/lib/classroom/generation';
+import {
+  STATIC_PRESENTATION_SYSTEM_INSTRUCTION,
+  toStaticSlideOutline,
+  withoutPresentationInteractions,
+} from './presentation-mode';
 const log = createLogger('Generation');
 
 /**
@@ -35,7 +40,7 @@ export const DEFAULT_LANGUAGE_DIRECTIVE =
  * Now uses simplified UserRequirements with just requirement text and language
  */
 export async function generateSceneOutlinesFromRequirements(
-  requirements: UserRequirements,
+  requestedRequirements: UserRequirements,
   pdfText: string | undefined,
   pdfImages: PdfImage[] | undefined,
   aiCall: AICallFn,
@@ -51,6 +56,7 @@ export async function generateSceneOutlinesFromRequirements(
 ): Promise<
   GenerationResult<{ languageDirective: string; courseTitle?: string; outlines: SceneOutline[] }>
 > {
+  const requirements = withoutPresentationInteractions(requestedRequirements);
   const lessonLanguage = resolveLessonLanguage({
     explicitLocale: requirements.lessonLocale,
     userInput: requirements.requirement,
@@ -129,7 +135,7 @@ export async function generateSceneOutlinesFromRequirements(
     });
 
     const response = await aiCall(
-      `${prompts.system}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
+      `${prompts.system}\n\n${STATIC_PRESENTATION_SYSTEM_INSTRUCTION}\n\n# Authoritative lesson language\n${lessonLanguage.instruction}\n\n${buildAuthoritativeTopicInstruction(requirements.requirement)}`,
       prompts.user,
       visionImages,
     );
@@ -163,11 +169,13 @@ export async function generateSceneOutlinesFromRequirements(
     }
 
     // Ensure IDs and order
-    const enriched = rawOutlines.map((outline, index) => ({
-      ...outline,
-      id: outline.id || nanoid(),
-      order: index + 1,
-    }));
+    const enriched = rawOutlines.map((outline, index) =>
+      toStaticSlideOutline({
+        ...outline,
+        id: outline.id || nanoid(),
+        order: index + 1,
+      }),
+    );
 
     // Replace sequential gen_img_N/gen_vid_N with globally unique IDs
     const result = uniquifyMediaElementIds(enriched);

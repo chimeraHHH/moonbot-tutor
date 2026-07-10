@@ -1,5 +1,6 @@
-import { ParentComingSoon } from '@/components/parent/coming-soon';
+import { redirect } from 'next/navigation';
 
 export default function ParentPage() {
-  return <ParentComingSoon />;
+  // Parent workspace is disabled for the student-only competition build.
+  redirect('/student');
 }

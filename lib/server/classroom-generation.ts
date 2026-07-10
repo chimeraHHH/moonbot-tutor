@@ -525,7 +525,12 @@ export async function generateClassroom(
     });
 
     try {
-      const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
+      const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl, {
+        title: courseTitle,
+        description: requirement,
+        targetLanguage: lessonLanguage.locale,
+        languageDirective,
+      });
       replaceMediaPlaceholders(scenes, mediaMap);
       log.info(`Media generation complete: ${Object.keys(mediaMap).length} files`);
     } catch (err) {

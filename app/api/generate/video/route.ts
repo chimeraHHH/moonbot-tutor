@@ -27,6 +27,7 @@ import type { VideoProviderId, VideoGenerationOptions } from '@/lib/media/types'
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { deepSolveTaskIdFromVideoUrl } from '@/lib/media/adapters/deep-solve-adapter';
 
 const log = createLogger('VideoGeneration API');
 
@@ -79,6 +80,19 @@ export async function POST(request: NextRequest) {
       { providerId, apiKey, baseUrl, model: clientModel },
       options,
     );
+
+    // Deep Solve runs on a configured local bridge by default. Returning its
+    // localhost URL makes the browser send it through the generic media proxy,
+    // where the SSRF guard correctly rejects private-network targets. Expose a
+    // narrow same-origin download route instead; that route can only address a
+    // validated task id on the configured Deep Solve bridge.
+    if (providerId === 'deep-solve') {
+      const taskId = deepSolveTaskIdFromVideoUrl(result.url);
+      if (!taskId) {
+        throw new Error('Deep Solve returned an invalid video URL');
+      }
+      result.url = `/api/generate/video/deep-solve/${encodeURIComponent(taskId)}`;
+    }
 
     log.info(
       `Video generated: url=${result.url ? 'yes' : 'no'}, ${result.width}x${result.height}, ${result.duration}s`,

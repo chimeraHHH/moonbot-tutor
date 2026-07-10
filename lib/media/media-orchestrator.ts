@@ -10,9 +10,11 @@ import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useSettingsStore } from '@/lib/store/settings';
 import { db, mediaFileKey } from '@/lib/utils/database';
 import type { SceneOutline } from '@/lib/types/generation';
-import type { MediaGenerationRequest } from '@/lib/media/types';
+import type { MediaGenerationJob, MediaGenerationRequest } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
+import { useStageStore } from '@/lib/store/stage';
+import { buildNarrativeVideoContext } from '@/lib/media/narrative-context';
 
 const log = createLogger('MediaOrchestrator');
 
@@ -45,7 +47,8 @@ export async function generateMediaForOutlines(
   const store = useMediaGenerationStore.getState();
 
   // Collect all media requests
-  const allRequests: MediaGenerationRequest[] = [];
+  const allRequests: MediaGenerationJob[] = [];
+  const stage = useStageStore.getState().stage;
   for (const outline of outlines) {
     if (!outline.mediaGenerations) continue;
     for (const mg of outline.mediaGenerations) {
@@ -55,7 +58,20 @@ export async function generateMediaForOutlines(
       // Skip already completed or permanently failed (restored from DB)
       const existing = store.getTask(mg.elementId);
       if (existing?.status === 'done' || existing?.status === 'failed') continue;
-      allRequests.push(mg);
+      allRequests.push(
+        mg.type === 'video'
+          ? {
+              ...mg,
+              deepSolveMode: 'narrative_storyboard',
+              narrativeContext: buildNarrativeVideoContext(outline, {
+                title: stage?.name,
+                description: stage?.description,
+                targetLanguage: stage?.lessonLanguage?.locale,
+                languageDirective: stage?.languageDirective,
+              }),
+            }
+          : mg,
+      );
     }
   }
 
@@ -100,6 +116,19 @@ export async function retryMediaTask(elementId: string): Promise<void> {
   const dbKey = mediaFileKey(task.stageId, elementId);
   await db.mediaFiles.delete(dbKey).catch(() => {});
 
+  const stageState = useStageStore.getState();
+  const sourceOutline = stageState.outlines.find((outline) =>
+    outline.mediaGenerations?.some((request) => request.elementId === elementId),
+  );
+  const recoveredNarrativeContext = sourceOutline
+    ? buildNarrativeVideoContext(sourceOutline, {
+        title: stageState.stage?.name,
+        description: stageState.stage?.description,
+        targetLanguage: stageState.stage?.lessonLanguage?.locale,
+        languageDirective: stageState.stage?.languageDirective,
+      })
+    : undefined;
+
   store.markPendingForRetry(elementId);
   await generateSingleMedia(
     {
@@ -108,6 +137,11 @@ export async function retryMediaTask(elementId: string): Promise<void> {
       elementId: task.elementId,
       aspectRatio: task.params.aspectRatio as MediaGenerationRequest['aspectRatio'],
       style: task.params.style,
+      deepSolveMode:
+        task.type === 'video'
+          ? task.params.deepSolveMode || 'narrative_storyboard'
+          : task.params.deepSolveMode,
+      narrativeContext: task.params.narrativeContext || recoveredNarrativeContext,
     },
     task.stageId,
   );
@@ -116,7 +150,7 @@ export async function retryMediaTask(elementId: string): Promise<void> {
 // ==================== Internal ====================
 
 async function generateSingleMedia(
-  req: MediaGenerationRequest,
+  req: MediaGenerationJob,
   stageId: string,
   abortSignal?: AbortSignal,
 ): Promise<void> {
@@ -158,6 +192,8 @@ async function generateSingleMedia(
       params: JSON.stringify({
         aspectRatio: req.aspectRatio,
         style: req.style,
+        deepSolveMode: req.deepSolveMode,
+        narrativeContext: req.narrativeContext,
       }),
       createdAt: Date.now(),
     });
@@ -187,6 +223,8 @@ async function generateSingleMedia(
           params: JSON.stringify({
             aspectRatio: req.aspectRatio,
             style: req.style,
+            deepSolveMode: req.deepSolveMode,
+            narrativeContext: req.narrativeContext,
           }),
           error: message,
           errorCode,
@@ -238,7 +276,7 @@ async function callImageApi(
 }
 
 async function callVideoApi(
-  req: MediaGenerationRequest,
+  req: MediaGenerationJob,
   abortSignal?: AbortSignal,
 ): Promise<{ url: string; poster?: string }> {
   const settings = useSettingsStore.getState();
@@ -256,6 +294,8 @@ async function callVideoApi(
     body: JSON.stringify({
       prompt: req.prompt,
       aspectRatio: req.aspectRatio,
+      deepSolveMode: req.deepSolveMode,
+      narrativeContext: req.narrativeContext,
     }),
     signal: abortSignal,
   });
