@@ -28,37 +28,29 @@ jobs:
       - run: npm test
 
   deploy:
-    name: Build & deploy on server
+    name: Ship & build on server
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      # The deploy server is in China and cannot pull from GHCR at usable speed,
-      # so we build the image directly on the server (node:22-alpine is cached,
-      # npm install uses the China mirror). No container registry needed.
-      - name: SSH build & run
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          command_timeout: 20m
-          script: |
-            set -e
-            if [ ! -d ~/moonbot-tutor/.git ]; then
-              git clone https://github.com/chimeraHHH/moonbot-tutor ~/moonbot-tutor
-            fi
-            cd ~/moonbot-tutor
-            git fetch --all --prune
-            git reset --hard origin/main
-            cd backend
-            docker build -t moonbot-tutor-backend:ci .
-            docker stop moonbot-tutor-backend 2>/dev/null || true
-            docker rm moonbot-tutor-backend 2>/dev/null || true
-            docker run -d \
-              --name moonbot-tutor-backend \
-              --restart unless-stopped \
-              -p 8088:3000 \
-              -e PORT=3000 \
-              moonbot-tutor-backend:ci
-            docker ps --filter name=moonbot-tutor-backend
+      - uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      # The deploy server (China) can't reliably reach GitHub or GHCR, so the
+      # runner packs the sources and ships them over SSH; the server builds the
+      # image locally (node:22-alpine is cached there, npm uses the China mirror).
+      - name: Pack backend
+        run: tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf deploy.tar .
+
+      - name: Ship & build & run on server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          set -e
+          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no -o ConnectTimeout=20 deploy.tar "$SERVER_USER@$SERVER_HOST:/home/$SERVER_USER/moonbot-deploy.tar"
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$SERVER_USER@$SERVER_HOST" \
+            'set -e; rm -rf ~/moonbot-build && mkdir -p ~/moonbot-build && tar xzf ~/moonbot-deploy.tar -C ~/moonbot-build && cd ~/moonbot-build && docker build -t moonbot-tutor-backend:ci . && (docker stop moonbot-tutor-backend 2>/dev/null || true) && (docker rm moonbot-tutor-backend 2>/dev/null || true) && docker run -d --name moonbot-tutor-backend --restart unless-stopped -p 8088:3000 -e PORT=3000 moonbot-tutor-backend:ci && docker ps --filter name=moonbot-tutor-backend'
