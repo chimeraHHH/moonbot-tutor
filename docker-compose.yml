@@ -1,6 +1,5 @@
 services:
   backend:
-    # Build locally (the deploy server builds this directly; no registry needed).
     build: ./backend
     container_name: moonbot-tutor-backend
     restart: unless-stopped
@@ -8,12 +7,14 @@ services:
       - "8088:3000"
     environment:
       - PORT=3000
-      # The NestJS BFF forwards here (FastAPI code2video / Deep Solve).
+      # NestJS BFF forwards to the code2video service.
       - CODE2VIDEO_BASE_URL=http://code2video:8010
     depends_on:
       - code2video
 
-  # FastAPI Manim (code2video) service — placeholder until ported in.
+  # code2video (Deep Solve): FastAPI Manim pipeline. Also hosts the in-process
+  # OpenAI<->Anthropic shim and TTS, so it is self-contained on :8010.
+  # Run with:  docker compose --env-file .env.local up --build
   code2video:
     build: ./services/code2video
     container_name: moonbot-tutor-code2video
@@ -21,4 +22,14 @@ services:
     expose:
       - "8010"
     environment:
-      - PORT=8010
+      PORT: "8010"
+      # LLM = Claude via the byteswarm relay (read from .env.local). The pipeline
+      # talks to the in-process shim, which forwards to byteswarm's messages API.
+      C2V_LLM_PROVIDER: claude
+      C2V_LLM_MODEL: ${C2V_LLM_MODEL:-claude-sonnet-4-6}
+      C2V_FIX_MODEL: ${C2V_FIX_MODEL:-claude-haiku-4-5-20251001}
+      C2V_LLM_API_KEY: ${ANTHROPIC_API_KEY}
+      C2V_LLM_BASE_URL: http://localhost:8010/shim/v1
+      C2V_SHIM_UPSTREAM: ${ANTHROPIC_BASE_URL:-https://byteswarm.ai/claude/v1}/messages
+      # Manim narration TTS via Doubao (Volcengine seed-tts-2.0).
+      C2V_TTS_DOUBAO_KEY: ${TTS_DOUBAO_API_KEY}
