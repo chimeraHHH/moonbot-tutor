@@ -3,6 +3,9 @@
 # are already present (avoids a ~5GB texlive build). We only add the app extras.
 FROM manimcommunity/manim:latest
 
+# The base image runs as a non-root user; switch to root for package installs.
+USER root
+
 # sox + libsndfile are needed by manim-voiceover / pydub for audio handling.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends sox libsndfile1 \
