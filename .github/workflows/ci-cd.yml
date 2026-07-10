@@ -48,10 +48,14 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build & push
+      - name: Build image
         run: |
           IMAGE="ghcr.io/${{ steps.owner.outputs.lower }}/moonbot-tutor-backend"
           docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" backend
+
+      - name: Push image
+        run: |
+          IMAGE="ghcr.io/${{ steps.owner.outputs.lower }}/moonbot-tutor-backend"
           docker push "$IMAGE:latest"
           docker push "$IMAGE:${{ github.sha }}"
 
