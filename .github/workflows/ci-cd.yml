@@ -2,12 +2,25 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'agent/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
+  code2video:
+    name: Check code2video (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile Python sources
+        run: python -m compileall -q services/code2video/src services/code2video/prompts
+
   test:
     name: Build & test (NestJS)
     runs-on: ubuntu-latest
@@ -54,7 +67,7 @@ jobs:
     name: Ship & build & run on server
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [test, frontend]
+    needs: [code2video, test, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4

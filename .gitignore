@@ -20,3 +20,18 @@ build/
 npm-debug.log*
 .DS_Store
 coverage/
+
+# local runtime/build artifacts
+.next/
+.pnpm-store/
+data/
+test-results/
+next-env.d.ts
+public/
+services/code2video/CASES/
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# local screenshots supplied during development — never publish them
+微信图片*.png
