@@ -724,7 +724,7 @@ h1 {
 }
 
 .plan-features li::before {
-  content: "✅ ";
+  content: "□ ";
 }
 
 .plan-name {
