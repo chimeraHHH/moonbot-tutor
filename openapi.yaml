@@ -1,0 +1,222 @@
+openapi: 3.0.3
+info:
+  title: Moonbot Tutor Backend API
+  description: |
+    NestJS BFF surface. All endpoints forward to the FastAPI `code2video`
+    (Deep Solve) Manim pipeline. This is the single contract the (future)
+    chat frontend talks to.
+  version: 0.1.0
+  contact:
+    name: moonbot-tutor
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: http://82.157.189.119
+    description: Deployed server
+
+tags:
+  - name: health
+  - name: tasks
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Service health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/v1/tasks:
+    post:
+      tags: [tasks]
+      summary: Create a Manim explainer task
+      description: |
+        Accepts a question/topic (and optional context), kicks off the
+        Deep Solve pipeline, and returns a task id immediately.
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '202':
+          description: Task accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: Poll a task's status
+      operationId: getTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Current task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatus'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/tasks/{taskId}/events:
+    get:
+      tags: [tasks]
+      summary: Stream stage progress (Server-Sent Events)
+      description: |
+        Emits one event per pipeline stage transition
+        (llm1, llm2, storyboard, audio, code, render, merge).
+      operationId: taskEvents
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: SSE stream of stage events
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StageEvent'
+
+  /api/v1/tasks/{taskId}/video:
+    get:
+      tags: [tasks]
+      summary: Fetch the rendered explainer video
+      operationId: getVideo
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: The rendered MP4
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: moonbot-tutor-backend
+        time:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+          minLength: 1
+          description: The question or topic to explain.
+          example: Explain the chain rule with an example.
+        context:
+          type: string
+          description: Optional extra context (uploaded material, prior steps, etc.).
+
+    TaskCreated:
+      type: object
+      required: [taskId, status]
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued]
+        stages:
+          type: array
+          items:
+            type: string
+          example: [llm1, llm2, storyboard, audio, code, render, merge]
+
+    TaskStatus:
+      type: object
+      required: [taskId, status, progress]
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        stage:
+          type: string
+          nullable: true
+          description: Current stage when status is `running`.
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Overall pipeline progress 0–100.
+        videoUrl:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    StageEvent:
+      type: object
+      properties:
+        stage:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+
+    Error:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+        message:
+          type: string

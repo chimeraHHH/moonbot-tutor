@@ -1,0 +1,26 @@
+# App-only extras for code2video.
+# manim + ManimPango + Cairo/Pango/ffmpeg/LaTeX come from the `manimcommunity/manim`
+# base image, so they are intentionally NOT listed here. Versions are left
+# unpinned so pip picks wheels compatible with the base image's Python.
+openai
+requests
+python-dotenv
+pydantic
+fastapi
+uvicorn[standard]
+edge-tts
+mutagen
+manim-voiceover
+moviepy
+imageio
+imageio-ffmpeg
+pydub
+opencv-python-headless
+pillow
+numpy
+scipy
+psutil
+beautifulsoup4
+PyYAML
+regex
+Jinja2

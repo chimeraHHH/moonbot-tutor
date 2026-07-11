@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git
+*.mp3
+media/
+tts_static/
+api_config.json

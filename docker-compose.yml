@@ -9,6 +9,7 @@ services:
       - sophosedu-postgres:/var/lib/postgresql/data
     restart: unless-stopped
 
+  # The complete Real-Time Tutor application kept at the repository root.
   openmaic:
     build: .
     ports:
@@ -20,13 +21,64 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-}
+      VIDEO_DEEPSOLVE_BASE_URL: http://backend:3000
     depends_on:
       - postgres
+      - backend
     volumes:
-      # Optional: mount server-providers.yml for provider config
-      # - ./server-providers.yml:/app/server-providers.yml:ro
       - openmaic-data:/app/data
     restart: unless-stopped
+
+  # Moonbot's preferred student-facing UI.
+  frontend:
+    build: ./frontend
+    container_name: moonbot-frontend
+    restart: unless-stopped
+    ports:
+      - "8089:3000"
+    environment:
+      PORT: "3000"
+      VIDEO_DEEPSOLVE_BASE_URL: http://backend:3000
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-deepseek:deepseek-v4-pro}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      TTS_DOUBAO_API_KEY: ${TTS_DOUBAO_API_KEY:-}
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    container_name: moonbot-tutor-backend
+    restart: unless-stopped
+    ports:
+      - "8088:3000"
+    environment:
+      - PORT=3000
+      # NestJS BFF forwards to the code2video service.
+      - CODE2VIDEO_BASE_URL=http://code2video:8010
+    depends_on:
+      - code2video
+
+  # code2video (Deep Solve): FastAPI Manim pipeline. Also hosts the in-process
+  # OpenAI<->Anthropic shim and TTS, so it is self-contained on :8010.
+  # Run with:  docker compose --env-file .env.local up --build
+  code2video:
+    build: ./services/code2video
+    container_name: moonbot-tutor-code2video
+    restart: unless-stopped
+    expose:
+      - "8010"
+    environment:
+      PORT: "8010"
+      # LLM = Claude via the byteswarm relay (read from .env.local). The pipeline
+      # talks to the in-process shim, which forwards to byteswarm's messages API.
+      C2V_LLM_PROVIDER: claude
+      C2V_LLM_MODEL: ${C2V_LLM_MODEL:-claude-sonnet-4-6}
+      C2V_FIX_MODEL: ${C2V_FIX_MODEL:-claude-haiku-4-5-20251001}
+      C2V_LLM_API_KEY: ${ANTHROPIC_API_KEY}
+      C2V_LLM_BASE_URL: http://localhost:8010/shim/v1
+      C2V_SHIM_UPSTREAM: ${ANTHROPIC_BASE_URL:-https://byteswarm.ai/claude/v1}/messages
+      # Manim narration TTS via Doubao (Volcengine seed-tts-2.0).
+      C2V_TTS_DOUBAO_KEY: ${TTS_DOUBAO_API_KEY}
 
 volumes:
   sophosedu-postgres:

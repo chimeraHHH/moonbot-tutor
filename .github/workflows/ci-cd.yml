@@ -1,0 +1,178 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Build & test (NestJS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  frontend:
+    name: Build & test (Next.js / OpenMAIC)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    name: Ship & build & run on server
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [test, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      # The deploy server (China) can't reliably reach GitHub/GHCR, so the runner
+      # packs all three services and ships them over SSH; the server builds the
+      # images locally and runs them on a shared docker network.
+      - name: Pack sources
+        run: |
+          tar -C backend --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' -czf backend-deploy.tar .
+          tar -C services/code2video --exclude=__pycache__ --exclude=.venv --exclude='*.pyc' -czf c2v-deploy.tar .
+          tar -C frontend \
+            --exclude=node_modules \
+            --exclude=.next \
+            --exclude=.git \
+            --exclude=tests \
+            --exclude=.pnpm-store \
+            --exclude=assets \
+            --exclude=public \
+            -czf frontend-deploy.tar .
+          ls -lh backend-deploy.tar c2v-deploy.tar frontend-deploy.tar
+
+      - name: Ship & build & run on server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          C2V_LLM_API_KEY: ${{ secrets.C2V_LLM_API_KEY }}
+          C2V_LLM_BASE_URL: ${{ secrets.C2V_LLM_BASE_URL }}
+          C2V_LLM_MODEL: ${{ secrets.C2V_LLM_MODEL }}
+          C2V_FIX_MODEL: ${{ secrets.C2V_FIX_MODEL }}
+          C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set -euo pipefail
+          REMOTE="$SERVER_USER@$SERVER_HOST"
+          SSHOPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=30"
+
+          sshpass -p "$SERVER_PASSWORD" scp $SSHOPTS \
+            backend-deploy.tar c2v-deploy.tar frontend-deploy.tar \
+            "$REMOTE:/home/$SERVER_USER/"
+
+          # Stream shell-escaped secret assignments and a literal script over
+          # stdin. Secrets are never expanded into script syntax or staged in a
+          # plaintext file on the runner or deployment server.
+          {
+            printf 'set -e\n'
+            printf 'C2V_LLM_API_KEY=%q\n' "$C2V_LLM_API_KEY"
+            printf 'C2V_LLM_BASE_URL=%q\n' "$C2V_LLM_BASE_URL"
+            printf 'C2V_LLM_MODEL=%q\n' "$C2V_LLM_MODEL"
+            printf 'C2V_FIX_MODEL=%q\n' "$C2V_FIX_MODEL"
+            printf 'C2V_TTS_DOUBAO_KEY=%q\n' "$C2V_TTS_DOUBAO_KEY"
+            printf 'DEEPSEEK_API_KEY=%q\n' "$DEEPSEEK_API_KEY"
+            cat <<'REMOTE_SCRIPT'
+          cd ~
+          rm -rf moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
+          mkdir -p moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
+          tar xzf backend-deploy.tar -C moonbot-backend-src
+          tar xzf c2v-deploy.tar -C moonbot-c2v-src
+          tar xzf frontend-deploy.tar -C moonbot-frontend-src
+
+          STATIC_PUBLIC="$HOME/moonbot-static/frontend-public"
+          if [ ! -d "$STATIC_PUBLIC" ] || [ -z "$(find "$STATIC_PUBLIC" -type f -print -quit)" ]; then
+            echo "ERROR: persistent frontend public directory is missing or empty: $STATIC_PUBLIC" >&2
+            echo "Run the static-resource initialization documented in README.md." >&2
+            exit 1
+          fi
+          cp -a "$STATIC_PUBLIC" moonbot-frontend-src/public
+          echo "Restored persistent frontend public files:"
+          du -sh moonbot-frontend-src/public
+
+          docker network create moonbot-net 2>/dev/null || true
+
+          # code2video (heavy: manim + LaTeX base; layers cache after first build)
+          echo "::group::Build code2video image"
+          docker build --progress=plain -t moonbot-code2video:ci moonbot-c2v-src
+          echo "::endgroup::"
+
+          echo "::group::Build backend image"
+          docker build --progress=plain -t moonbot-backend:ci moonbot-backend-src
+          echo "::endgroup::"
+
+          echo "::group::Build frontend image"
+          docker build --progress=plain -t moonbot-frontend:ci moonbot-frontend-src
+          echo "::endgroup::"
+
+          docker stop moonbot-code2video 2>/dev/null || true
+          docker rm   moonbot-code2video 2>/dev/null || true
+          docker run -d --name moonbot-code2video --restart unless-stopped --network moonbot-net \
+            -e PORT=8010 \
+            -e C2V_LLM_PROVIDER=gpt-4o \
+            -e C2V_LLM_API_KEY="$C2V_LLM_API_KEY" \
+            -e C2V_LLM_BASE_URL="$C2V_LLM_BASE_URL" \
+            -e C2V_LLM_MODEL="$C2V_LLM_MODEL" \
+            -e C2V_FIX_MODEL="$C2V_FIX_MODEL" \
+            -e C2V_TTS_DOUBAO_KEY="$C2V_TTS_DOUBAO_KEY" \
+            moonbot-code2video:ci
+
+          docker stop moonbot-tutor-backend 2>/dev/null || true
+          docker rm   moonbot-tutor-backend 2>/dev/null || true
+          docker run -d --name moonbot-tutor-backend --restart unless-stopped --network moonbot-net -p 8088:3000 \
+            -e PORT=3000 \
+            -e CODE2VIDEO_BASE_URL=http://moonbot-code2video:8010 \
+            moonbot-backend:ci
+
+          docker stop moonbot-frontend 2>/dev/null || true
+          docker rm   moonbot-frontend 2>/dev/null || true
+          docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
+            -e PORT=3000 \
+            -e DEFAULT_MODEL=deepseek:deepseek-v4-pro \
+            -e DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+            -e VIDEO_DEEPSOLVE_BASE_URL=http://moonbot-tutor-backend:3000 \
+            -e TTS_DOUBAO_API_KEY="$C2V_TTS_DOUBAO_KEY" \
+            moonbot-frontend:ci
+
+          docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          REMOTE_SCRIPT
+          } | sshpass -p "$SERVER_PASSWORD" ssh $SSHOPTS "$REMOTE" 'bash -s'
