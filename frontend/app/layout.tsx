@@ -19,8 +19,9 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: '星燧计划',
-  description: '面向学生的 AI 沉浸式中文课堂。',
+  title: 'Real-Time Tutor',
+  description:
+    'The open-source AI interactive classroom. Upload a PDF to instantly generate an immersive, multi-agent learning experience.',
 };
 
 export default function RootLayout({
@@ -29,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning

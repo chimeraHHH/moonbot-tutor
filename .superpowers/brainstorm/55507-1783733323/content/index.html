@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>星燧计划</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="zhixiangView" class="zhixiang-view" aria-label="星燧计划封面">
+        <div class="zhixiang-center">
+          <p class="zhixiang-title">星燧计划</p>
+          <h1 class="zhixiang-sub">为人类生一簇篝火</h1>
+          <button id="scrollToSolar" class="enter-btn" type="button">进入星燧</button>
+        </div>
+      </section>
+
+      <section id="homeView" class="home-view" aria-label="星燧计划首页">
+        <button class="yinghe-corner" data-topic="stars" aria-label="进入星河星宿课堂">
+          <img src="./yinghe.png" alt="银河" />
+          <span>银河</span>
+        </button>
+
+        <header class="home-header">
+          <div class="header-text-box">
+            <p class="brand-title">浪漫幻想</p>
+          </div>
+        </header>
+
+        <div class="orbit-field" aria-label="天体入口">
+          <div class="orbit orbit-a"></div>
+          <div class="orbit orbit-b"></div>
+          <div class="orbit orbit-c"></div>
+
+          <button class="celestial sun-node active" data-topic="sun" aria-label="进入太阳羲和课堂">
+            <img src="./SUN.png" alt="太阳" />
+            <span>日</span>
+          </button>
+
+          <div class="earth-system">
+            <div class="celestial earth-node" aria-label="地球">
+              <img src="./EARTH.png" alt="地球" />
+            </div>
+            <button class="celestial moon-node" data-topic="moon" aria-label="进入月球望舒课堂">
+              <img src="./MOON.png" alt="月球" />
+              <span>月</span>
+            </button>
+          </div>
+
+          <button class="celestial mars-node" data-topic="mars" aria-label="进入火星祝融课堂">
+            <img src="./MARS.png" alt="火星" />
+            <span>荧惑</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="aerospaceView" class="aerospace-view" aria-label="中国现代航天">
+        <img src="./bg3.png" alt="" class="aerospace-bg" />
+        <button class="aerospace-moon" data-topic="chanye" aria-label="进入嫦娥探月课堂">
+          <img src="./moon3.png" alt="月球" />
+          <span>嫦娥</span>
+        </button>
+        <button class="aerospace-rocket" data-topic="rocket" aria-label="中国回收火箭">
+          <img src="./huojianhuishou.png" alt="回收火箭" />
+          <span>回收火箭</span>
+        </button>
+        <header class="aerospace-header">
+          <h1>星途漫漫，中华民族步履不停……</h1>
+          <p class="aerospace-copy">羲和驭日而行，嫦娥奔月不归，祝融燃起文明之火，伏羲仰观星象、画出第一张天图——这些名字，从上古神话走入现代航天器的铭牌，成为中华民族向宇宙递出的回答。</p>
+        </header>
+        <div class="aerospace-inner"></div>
+      </section>
+
+      <section id="pricingView" class="pricing-view" aria-label="定价策略">
+        <div class="pricing-inner">
+          <header class="pricing-header">
+            <p class="eyebrow">定价策略</p>
+            <h1>选择你的星途</h1>
+          </header>
+          <div class="pricing-grid">
+            <div class="pricing-card">
+              <p class="plan-name">Luna</p>
+              <p class="plan-price">¥99</p>
+              <p class="plan-sub">解锁基础学习能力</p>
+              <ul class="plan-features">
+                <li>核心答题模型</li>
+                <li>每日固定讲解额度</li>
+                <li>基础错题记录</li>
+                <li>学习进度统计</li>
+              </ul>
+            </div>
+            <div class="pricing-card">
+              <p class="plan-name">Terra</p>
+              <p class="plan-price">¥299</p>
+              <p class="plan-sub">解锁完整学习体验</p>
+              <ul class="plan-features">
+                <li>高级答题模型</li>
+                <li>更多可视化讲解额度</li>
+                <li>更细致的步骤解析</li>
+                <li>支持多题型训练</li>
+                <li>生成个人学习报告</li>
+              </ul>
+            </div>
+            <div class="pricing-card">
+              <p class="plan-name">Sol</p>
+              <p class="plan-price">¥599</p>
+              <p class="plan-sub">有效提升学习效率</p>
+              <ul class="plan-features">
+                <li>高可视化讲解额度</li>
+                <li>更强的复杂题解析能力</li>
+                <li>更深度的可视化推演</li>
+                <li>个性化学习路径规划</li>
+                <li>错题智能重组训练</li>
+                <li>阶段性能力评估报告</li>
+                <li>更长学习记忆与历史记录</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="lessonView" class="lesson-view hidden" aria-live="polite">
+        <header class="lesson-header">
+          <button id="backHome" class="ghost-button" type="button">返回星图</button>
+          <div>
+            <p id="topicKicker" class="eyebrow">太阳 | 羲和体系</p>
+            <h2 id="topicTitle">羲和·太阳天火课堂</h2>
+          </div>
+          <span id="topicTag" class="topic-tag">神话与古天文</span>
+        </header>
+
+        <p id="topicIntro" class="intro">
+          从羲和驭日到古人定时序，星燧先把神话与古天文讲清楚；现代航天内容统一进入第三页"中国现代航天"。
+        </p>
+
+        <div class="knowledge-chain two-card" id="knowledgeChain">
+          <article id="historyCard" style="display:none">
+            <span id="label0">00 技术历程</span>
+            <p id="historyText"></p>
+            <small id="historyFrame"></small>
+          </article>
+          <article>
+            <span id="label1">01 神话之火</span>
+            <p id="mythText">羲和驾着太阳车巡行天空，让人类第一次把昼夜、光明与秩序连在一起。</p>
+            <small id="mythFrame">画面：太阳车从东方升起，光线照亮篝火与地平线。</small>
+          </article>
+          <article>
+            <span id="label2">02 古天文之象</span>
+            <p id="ancientText">古人观日影、定节气、识农时，把太阳变化转化为生活与礼乐的时间尺度。</p>
+            <small id="ancientFrame">画面：日影长度变化被标成节气刻度。</small>
+          </article>
+        </div>
+
+        <section class="ask-dock">
+          <div class="ask-copy">
+            <p class="eyebrow">传火追问</p>
+            <h2>输入一个新问题，生成神话与古天文讲解</h2>
+          </div>
+          <form id="askForm" class="ask-form">
+            <input
+              id="questionInput"
+              type="text"
+              autocomplete="off"
+              placeholder="例如：为什么古人把火星叫荧惑？"
+            />
+            <button type="submit">生成讲解</button>
+          </form>
+        </section>
+
+        <section id="resultPanel" class="result-panel hidden">
+          <div class="lesson-header compact">
+            <div>
+              <p class="eyebrow">传火者生成结果</p>
+              <h2 id="resultTitle">新的观星问题</h2>
+            </div>
+            <span class="topic-tag">两段式讲解</span>
+          </div>
+          <div class="result-grid two-card">
+            <article>
+              <span>01 神话之火</span>
+              <p id="resultMyth"></p>
+            </article>
+            <article>
+              <span>02 古天文之象</span>
+              <p id="resultAncient"></p>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

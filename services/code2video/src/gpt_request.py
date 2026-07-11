@@ -133,12 +133,11 @@ def request_claude_token(prompt, log_id=None, max_tokens=10000, max_retries=3, m
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             # --- MODIFIED: token usage ---
             if completion.usage:
                 usage_info["prompt_tokens"] = completion.usage.prompt_tokens
@@ -422,12 +421,11 @@ def request_gemini(prompt, log_id=None, max_tokens=8000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             return completion
         except Exception as e:
             retry_count += 1
@@ -474,12 +472,11 @@ def request_gemini_token(prompt, log_id=None, max_tokens=8000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
 
             if completion.usage:
                 usage_info["prompt_tokens"] = completion.usage.prompt_tokens
@@ -496,75 +493,6 @@ def request_gemini_token(prompt, log_id=None, max_tokens=8000, max_retries=3):
             delay = (2**retry_count) * 0.1 + (random.random() * 0.1)
             print(
                 f"Request failed with error: {str(e)}. Retrying in {delay:.2f} seconds... (Attempt {retry_count}/{max_retries})"
-            )
-            time.sleep(delay)
-    return None, usage_info
-
-
-def request_gemini_vertex(prompt, log_id=None, max_tokens=10000, max_retries=3, model=None):
-    """
-    Gemini via Vertex AI Express mode (API key), using the google-genai SDK.
-
-    Config (env, service `gemini_vertex`):
-      GEMINI_VERTEX_API_KEY — Vertex Express API key (AQ....)
-      GEMINI_VERTEX_MODEL   — full Vertex model resource path, e.g.
-        projects/<project>/locations/global/publishers/google/models/gemini-3.5-flash
-
-    Returns (response, usage_info) where response is the google-genai
-    GenerateContentResponse; the agent reads .candidates[0].content.parts[0].text.
-    Reaches Google through the process HTTP(S)/SOCKS proxy env (required in CN).
-    """
-    from google import genai
-    from google.genai import types
-
-    api_key = cfg("gemini_vertex", "api_key")
-    model_name = model or cfg("gemini_vertex", "model")
-    if not api_key or not model_name:
-        raise RuntimeError(
-            "Gemini Vertex requires GEMINI_VERTEX_API_KEY and GEMINI_VERTEX_MODEL "
-            "(service gemini_vertex)."
-        )
-
-    if log_id is None:
-        log_id = generate_log_id()
-
-    client = genai.Client(
-        vertexai=True,
-        api_key=api_key,
-        http_options=types.HttpOptions(api_version="v1"),
-    )
-    config = types.GenerateContentConfig(
-        max_output_tokens=max_tokens,
-        safety_settings=[
-            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
-            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
-            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
-            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
-        ],
-        thinking_config=types.ThinkingConfig(thinking_budget=-1),
-    )
-
-    usage_info = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    retry_count = 0
-    while retry_count < max_retries:
-        try:
-            response = client.models.generate_content(
-                model=model_name, contents=prompt, config=config
-            )
-            u = getattr(response, "usage_metadata", None)
-            if u:
-                usage_info["prompt_tokens"] = getattr(u, "prompt_token_count", 0) or 0
-                usage_info["completion_tokens"] = getattr(u, "candidates_token_count", 0) or 0
-                usage_info["total_tokens"] = getattr(u, "total_token_count", 0) or 0
-            return response, usage_info
-        except Exception as e:
-            retry_count += 1
-            if retry_count >= max_retries:
-                raise Exception(f"Failed after {max_retries} attempts. Last error: {str(e)}")
-            delay = (2 ** retry_count) * 0.1 + (random.random() * 0.1)
-            print(
-                f"Request failed with error: {str(e)}. Retrying in {delay:.2f} seconds... "
-                f"(Attempt {retry_count}/{max_retries})"
             )
             time.sleep(delay)
     return None, usage_info
@@ -600,12 +528,11 @@ def request_gpt4o(prompt, log_id=None, max_tokens=8000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             return completion.choices[0].message.content
         except Exception as e:
             retry_count += 1
@@ -651,12 +578,11 @@ def request_gpt4o_token(prompt, log_id=None, max_tokens=8000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
 
             if completion.usage:
                 usage_info["prompt_tokens"] = completion.usage.prompt_tokens
@@ -829,12 +755,11 @@ def request_gpt5(prompt, log_id=None, max_tokens=1000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             return completion
         except Exception as e:
             retry_count += 1
@@ -880,12 +805,11 @@ def request_gpt5_token(prompt, log_id=None, max_tokens=1000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
 
             if completion.usage:
                 usage_info["prompt_tokens"] = completion.usage.prompt_tokens
@@ -936,12 +860,11 @@ def request_gpt41(prompt, log_id=None, max_tokens=1000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             return completion
         except Exception as e:
             retry_count += 1
@@ -986,12 +909,11 @@ def request_gpt41_token(prompt, log_id=None, max_tokens=1000, max_retries=3):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
 
             if completion.usage:
                 usage_info["prompt_tokens"] = completion.usage.prompt_tokens
@@ -1060,12 +982,11 @@ def request_gpt41_img(prompt, image_path=None, log_id=None, max_tokens=1000, max
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                extra_headers=extra_headers,
-            )
+            _kwargs = dict(model=model_name, messages=messages, extra_headers=extra_headers)
+            # lmuai gpt-5.x reasoning endpoint rejects output-token limits; omit when flagged.
+            if not os.getenv("C2V_OMIT_MAX_TOKENS"):
+                _kwargs["max_tokens"] = max_tokens
+            completion = client.chat.completions.create(**_kwargs)
             return completion
         except Exception as e:
             retry_count += 1

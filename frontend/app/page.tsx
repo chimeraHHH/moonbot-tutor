@@ -1,6 +1,5 @@
-import { LandingPage } from '@/components/landing/landing-page';
-import './landing.css';
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  return <LandingPage />;
+  redirect('/student');
 }

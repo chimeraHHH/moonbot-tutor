@@ -241,6 +241,17 @@ function injectProviderOptions<T extends GenerateTextParams | StreamTextParams>(
   params: T,
   thinking?: ThinkingConfig,
 ): T {
+  // Some OpenAI-compatible reasoning endpoints (e.g. lmuai gpt-5.x) reject any
+  // output-token limit param. When LLM_OMIT_MAX_TOKENS=1, strip it so calls work.
+  if (
+    process.env.LLM_OMIT_MAX_TOKENS === '1' &&
+    (params as Record<string, unknown>).maxOutputTokens !== undefined
+  ) {
+    const rest = { ...(params as Record<string, unknown>) };
+    delete rest.maxOutputTokens;
+    params = rest as T;
+  }
+
   if ((params as Record<string, unknown>).providerOptions) return params; // caller explicitly set providerOptions
 
   const modelId = getModelId(params);
