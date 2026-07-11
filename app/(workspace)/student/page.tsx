@@ -806,7 +806,6 @@ function HomePage() {
           </AnimatePresence>
         </motion.div>
       )}
-
     </div>
   );
 }

@@ -24,7 +24,6 @@ import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { llmApiError } from '@/lib/server/llm-error-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
-import { resolveVocationalActive } from '@/lib/config/feature-flags';
 import { coerceLessonLanguage } from '@/lib/classroom/language';
 import type { LessonLanguage } from '@/lib/classroom/language';
 import {
@@ -33,6 +32,7 @@ import {
   traceGeneration,
   type GenerationContext,
 } from '@/lib/classroom/generation';
+import { resolveVocationalActive } from '@/lib/config/feature-flags';
 
 const log = createLogger('Scene Content API');
 
