@@ -68,7 +68,7 @@ export function PptGeneratorPanel() {
   const [includeQuiz, setIncludeQuiz] = useState(true);
   const [includeInteractive, setIncludeInteractive] = useState(false);
   const [generateVideo, setGenerateVideo] = useState(false);
-  const [generateTTS, setGenerateTTS] = useState(false);
+  const [generateTTS, setGenerateTTS] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<JobState | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

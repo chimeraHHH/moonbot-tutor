@@ -866,10 +866,9 @@ export const useSettingsStore = create<SettingsState>()(
         videoGenerationEnabled: false,
         reviewOutlineEnabled: false,
 
-        // TTS is OFF by default; auto-enabled on first server-sync when a TTS
-        // provider is configured (mirrors image/video). Fresh installs with no
-        // provider stay off and show an "enable browser-native" CTA (#665).
-        ttsEnabled: false,
+        // Teacher narration is enabled by default. Provider validation still
+        // selects only a usable server/client TTS provider before generation.
+        ttsEnabled: true,
         asrEnabled: true,
 
         // Off until the server reports a concurrency via fetchServerProviders.
@@ -1696,7 +1695,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'settings-storage',
-      version: 4,
+      version: 5,
       // Migrate persisted state
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
@@ -1800,10 +1799,9 @@ export const useSettingsStore = create<SettingsState>()(
           state.reviewOutlineEnabled = false;
         }
 
-        // Add default audio toggles if missing. TTS defaults OFF (opt-in / CTA);
-        // first server-sync auto-enables it when a provider is configured (#665).
+        // Add default audio toggles if missing.
         if ((state as Record<string, unknown>).ttsEnabled === undefined) {
-          (state as Record<string, unknown>).ttsEnabled = false;
+          (state as Record<string, unknown>).ttsEnabled = true;
         }
         if ((state as Record<string, unknown>).asrEnabled === undefined) {
           (state as Record<string, unknown>).asrEnabled = true;
@@ -1883,6 +1881,13 @@ export const useSettingsStore = create<SettingsState>()(
             const cfg = state.ttsProvidersConfig[pid];
             if (cfg) cfg.enabled = pid !== 'browser-native-tts';
           }
+        }
+
+        // v4 → v5: teacher narration is now on by default. Apply this once to
+        // existing persisted browser settings; after migration, users can still
+        // turn TTS off explicitly and that choice remains at storage version 5.
+        if (version < 5) {
+          state.ttsEnabled = true;
         }
 
         ensureValidProviderSelections(state);
