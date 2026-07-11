@@ -171,17 +171,77 @@ jobs:
           docker build --progress=plain -t moonbot-frontend:ci moonbot-frontend-src
           echo "::endgroup::"
 
-          docker stop moonbot-code2video 2>/dev/null || true
-          docker rm   moonbot-code2video 2>/dev/null || true
-          docker run -d --name moonbot-code2video --restart unless-stopped --network moonbot-net \
+          # --- code2video: fail-safe candidate deployment ------------------
+          # A missing/incorrect secret must ABORT the deploy and leave the
+          # currently healthy container running, instead of replacing it with a
+          # crippled one (the outage this hardening eliminates).
+          test "$C2V_LLM_PROVIDER" = "vertex-express" || { echo "FATAL: C2V_LLM_PROVIDER must be 'vertex-express' (got '${C2V_LLM_PROVIDER:-<empty>}')"; exit 1; }
+          test -n "$C2V_LLM_MODEL"   || { echo "FATAL: C2V_LLM_MODEL is empty";   exit 1; }
+          test -n "$C2V_FIX_MODEL"   || { echo "FATAL: C2V_FIX_MODEL is empty";   exit 1; }
+          test -n "$C2V_LLM_API_KEY" || { echo "FATAL: C2V_LLM_API_KEY is empty"; exit 1; }
+          # Desensitized config log — never emit key material.
+          echo "code2video config: provider=$C2V_LLM_PROVIDER model=$C2V_LLM_MODEL fix_model=$C2V_FIX_MODEL api_key=SET(len=${#C2V_LLM_API_KEY}) tts_mode=off"
+
+          # The egress proxy must be running, else a fresh code2video cannot
+          # reach Vertex. Do not create an offline container; keep the old one.
+          docker inspect -f '{{.State.Running}}' proxy 2>/dev/null | grep -qx true \
+            || { echo "FATAL: proxy container is not running; aborting deploy, keeping current code2video"; exit 1; }
+
+          # Preserve the current container's config for manual rollback.
+          docker inspect moonbot-code2video > "moonbot-code2video.prev.inspect.$(date -u +%Y%m%dT%H%M%SZ).json" 2>/dev/null || true
+
+          # vertex-express derives the aiplatform host itself and ignores any
+          # OpenAI-compatible base URL; do NOT inject C2V_LLM_BASE_URL here
+          # (no /endpoints/openapi). Run the replacement under a candidate name
+          # so the live container serves traffic until every gate passes.
+          docker rm -f moonbot-code2video-candidate 2>/dev/null || true
+          docker run -d --name moonbot-code2video-candidate --restart no --network moonbot-net \
             -e PORT=8010 \
             -e C2V_LLM_PROVIDER="$C2V_LLM_PROVIDER" \
             -e C2V_LLM_API_KEY="$C2V_LLM_API_KEY" \
-            -e C2V_LLM_BASE_URL="$C2V_LLM_BASE_URL" \
             -e C2V_LLM_MODEL="$C2V_LLM_MODEL" \
             -e C2V_FIX_MODEL="$C2V_FIX_MODEL" \
             -e C2V_TTS_DOUBAO_KEY="$C2V_TTS_DOUBAO_KEY" \
+            -e C2V_TTS_MODE=off \
+            -e HTTP_PROXY=http://proxy:7890 \
+            -e HTTPS_PROXY=http://proxy:7890 \
+            -e http_proxy=http://proxy:7890 \
+            -e https_proxy=http://proxy:7890 \
+            -e NO_PROXY=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
+            -e no_proxy=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
             moonbot-code2video:ci
+
+          c2v_abort() {
+            echo "candidate validation FAILED: $1"
+            docker logs --tail 40 moonbot-code2video-candidate 2>&1 | sed -E 's/(x-goog-api-key|api_key|API_KEY)[^ ]*/\1=<redacted>/g' || true
+            docker rm -f moonbot-code2video-candidate 2>/dev/null || true
+            echo "existing moonbot-code2video left running; deploy aborted"
+            exit 1
+          }
+
+          # Gate 1 — health endpoint returns 200.
+          c2v_ok=""
+          for _ in $(seq 1 30); do
+            code=$(docker exec moonbot-code2video-candidate python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:8010/',timeout=5).status)" 2>/dev/null || echo 000)
+            [ "$code" = "200" ] && { c2v_ok=1; break; }
+            sleep 2
+          done
+          [ -n "$c2v_ok" ] || c2v_abort "health endpoint never returned 200"
+
+          # Gate 2 — implicit proxy egress (trust_env) reaches Vertex (40x = reached).
+          pcode=$(docker exec moonbot-code2video-candidate python -c "import httpx;print(httpx.Client(trust_env=True,timeout=20).get('https://aiplatform.googleapis.com/').status_code)" 2>/dev/null || echo 000)
+          case "$pcode" in 401|403|404) echo "implicit proxy egress OK (HTTP $pcode)";; *) c2v_abort "implicit proxy egress returned '$pcode' (expected 401/403/404)";; esac
+
+          # Gate 3 — live Vertex smoke returns non-empty content.
+          docker exec moonbot-code2video-candidate python -c "import os,sys; from gpt_request import invoke_llm; r=invoke_llm(provider=os.environ['C2V_LLM_PROVIDER'],model=os.environ['C2V_LLM_MODEL'],messages=[{'role':'user','content':'1+1=?'}],api_key=os.environ['C2V_LLM_API_KEY'],max_tokens=16); sys.exit(0 if (r.content or '').strip() else 3)" || c2v_abort "Vertex smoke returned empty/failed"
+
+          # All gates passed — promote candidate, retire the old container.
+          echo "candidate passed all gates; promoting"
+          docker stop moonbot-code2video 2>/dev/null || true
+          docker rename moonbot-code2video "moonbot-code2video-old-$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+          docker rename moonbot-code2video-candidate moonbot-code2video
+          docker update --restart unless-stopped moonbot-code2video >/dev/null
+          docker restart moonbot-code2video
 
           docker stop moonbot-tutor-backend 2>/dev/null || true
           docker rm   moonbot-tutor-backend 2>/dev/null || true
@@ -202,6 +262,12 @@ jobs:
             -e GOOGLE_VERTEX_LOCATION="$GOOGLE_VERTEX_LOCATION" \
             -e VIDEO_DEEPSOLVE_BASE_URL=http://moonbot-tutor-backend:3000 \
             -e TTS_DOUBAO_API_KEY="$C2V_TTS_DOUBAO_KEY" \
+            -e HTTP_PROXY=http://proxy:7890 \
+            -e HTTPS_PROXY=http://proxy:7890 \
+            -e http_proxy=http://proxy:7890 \
+            -e https_proxy=http://proxy:7890 \
+            -e NO_PROXY=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
+            -e no_proxy=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
             moonbot-frontend:ci
 
           docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'

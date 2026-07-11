@@ -10,7 +10,15 @@ const nextConfig: NextConfig = {
   // (the "Edit with AI" Pro-mode path), which broke the #619 keep-alive e2e.
   // Mark them server-external so Next loads them natively and the dynamic
   // import resolves as a real Node call.
-  serverExternalPackages: ['@earendil-works/pi-ai', '@earendil-works/pi-agent-core'],
+  //
+  // `undici` (ProxyAgent) is loaded from lib/ai/providers.ts via a
+  // `webpackIgnore`d dynamic import to egress-proxy Vertex/Anthropic fetches on
+  // the China deploy. webpackIgnore hides it from Next's standalone file
+  // tracing, so without listing it here it is dropped from `.next/standalone`
+  // and the proxied fetch throws MODULE_NOT_FOUND at runtime (outline/Deep
+  // Solve then time out). Listing it forces Next to ship it in the standalone
+  // node_modules.
+  serverExternalPackages: ['@earendil-works/pi-ai', '@earendil-works/pi-agent-core', 'undici'],
   experimental: {
     proxyClientMaxBodySize: '200mb',
   },
