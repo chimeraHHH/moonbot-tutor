@@ -157,7 +157,8 @@ class TeachingVideoAgent:
 
     def _request_api_and_track_tokens(self, prompt, max_tokens=10000):
         """packages API requests and automatically accumulates token usage"""
-        response, usage = self.API(prompt, max_tokens=max_tokens)
+        response = self.API(prompt, max_tokens=max_tokens)
+        usage = response.usage
         if usage:
             self.token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
             self.token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
@@ -204,13 +205,7 @@ class TeachingVideoAgent:
                     if attempt == self.max_regenerate_tries:
                         raise ValueError("API requests failed multiple times")
                     continue
-                try:
-                    content = response.candidates[0].content.parts[0].text
-                except Exception:
-                    try:
-                        content = response.choices[0].message.content
-                    except Exception:
-                        content = str(response)
+                content = response.content
                 content = extract_json_from_markdown(content)
                 try:
                     outline_data = json.loads(content)
@@ -272,13 +267,7 @@ class TeachingVideoAgent:
                         raise ValueError("API requests failed multiple times")
                     continue
 
-                try:
-                    content = response.candidates[0].content.parts[0].text
-                except Exception:
-                    try:
-                        content = response.choices[0].message.content
-                    except Exception:
-                        content = str(response)
+                content = response.content
 
                 try:
                     json_str = extract_json_from_markdown(content)
@@ -375,13 +364,7 @@ class TeachingVideoAgent:
             print(f"❌ Failed to generate code for {section.id} via API call.")
             return ""
 
-        try:
-            code = response.candidates[0].content.parts[0].text
-        except Exception:
-            try:
-                code = response.choices[0].message.content
-            except Exception:
-                code = str(response)
+        code = response.content
         if "```python" in code:
             code = code.split("```python")[1].split("```")[0].strip()
         elif "```" in code:

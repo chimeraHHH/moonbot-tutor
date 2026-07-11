@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from manim import VGroup, Text, WHITE, UP, DOWN, LEFT
+from manimpango import list_fonts
 from manim_voiceover import VoiceoverScene
 from manim_voiceover.helper import remove_bookmarks
 from manim_voiceover.services.base import (
@@ -29,6 +30,21 @@ from manim_voiceover.services.base import (
 import edge_tts
 
 RATE = os.getenv("C2V_TTS_RATE", "+0%")
+# Narration mode. off: no network TTS at all, animations run with an estimated
+# duration. optional (default): try Doubao → edge-tts → silent fallback so a
+# TTS outage never breaks the video. required: any TTS failure raises.
+TTS_MODE = os.getenv("C2V_TTS_MODE", "optional").strip().lower()
+if TTS_MODE not in ("off", "optional", "required"):
+    TTS_MODE = "optional"
+# Honor an operator proxy when Doubao falls back to edge-tts. The local launch
+# script normally uses Doubao and can keep its localhost NO_PROXY settings.
+EDGE_TTS_PROXY = (
+    os.getenv("HTTPS_PROXY")
+    or os.getenv("https_proxy")
+    or os.getenv("HTTP_PROXY")
+    or os.getenv("http_proxy")
+    or None
+)
 DOUBAO_KEY = os.getenv("C2V_TTS_DOUBAO_KEY", "")  # "appId:accessKey"
 DOUBAO_URL = os.getenv(
     "C2V_TTS_DOUBAO_URL", "https://openspeech.bytedance.com/api/v3/tts"
@@ -36,6 +52,28 @@ DOUBAO_URL = os.getenv(
 # Default voice depends on the backend (edge uses zh-CN-*, Doubao uses *_bigtts).
 DEFAULT_VOICE = "zh_female_vv_uranus_bigtts" if DOUBAO_KEY else "zh-CN-XiaoxiaoNeural"
 VOICE = os.getenv("C2V_TTS_VOICE", DEFAULT_VOICE)
+
+
+def _resolve_chinese_font() -> str:
+    explicit = os.getenv("C2V_CHINESE_FONT", "").strip()
+    if explicit:
+        return explicit
+    available = set(list_fonts())
+    for candidate in (
+        "PingFang SC",
+        "Noto Sans CJK SC",
+        "Microsoft YaHei",
+        "SimHei",
+        "Arial Unicode MS",
+    ):
+        if candidate in available:
+            return candidate
+    return "sans-serif"
+
+
+# Generated scenes import this symbol directly, so it is part of the stable
+# TeachingScene contract rather than an optional styling detail.
+CHINESE_FONT = _resolve_chinese_font()
 
 
 class EdgeTTSService(SpeechService):
@@ -70,7 +108,12 @@ class EdgeTTSService(SpeechService):
         out = str(Path(cache_dir) / audio_path)
 
         async def _save() -> None:
-            await edge_tts.Communicate(input_text, self.voice, rate=self.rate).save(out)
+            await edge_tts.Communicate(
+                input_text,
+                self.voice,
+                rate=self.rate,
+                proxy=EDGE_TTS_PROXY,
+            ).save(out)
 
         asyncio.run(_save())
 
@@ -115,7 +158,12 @@ class DoubaoTTSService(SpeechService):
             print(f"[teaching_scene] Doubao TTS failed ({e}); falling back to edge-tts")
 
             async def _save() -> None:
-                await edge_tts.Communicate(input_text, "zh-CN-XiaoxiaoNeural", rate=RATE).save(str(out))
+                await edge_tts.Communicate(
+                    input_text,
+                    "zh-CN-XiaoxiaoNeural",
+                    rate=RATE,
+                    proxy=EDGE_TTS_PROXY,
+                ).save(str(out))
 
             asyncio.run(_save())
         return {"input_text": text, "input_data": input_data, "original_audio": audio_path}
@@ -171,10 +219,20 @@ class DoubaoTTSService(SpeechService):
 
 
 def make_speech_service():
-    """Pick the manim-voiceover speech backend: Doubao TTS 2.0 if configured, else edge-tts."""
+    """Pick the manim-voiceover speech backend: Doubao TTS 2.0 if configured, else edge-tts.
+    Returns None when TTS is disabled (C2V_TTS_MODE=off) — callers must skip voiceover."""
+    if TTS_MODE == "off":
+        return None
     if DOUBAO_KEY:
         return DoubaoTTSService()
     return EdgeTTSService()
+
+
+def _estimated_narration_seconds(text: str) -> float:
+    """Rough duration estimate used only when TTS is off, so animations still
+    play for a plausible length. ~4 chars/sec for CJK narration, min 1.5s."""
+    cleaned = (text or "").strip()
+    return max(1.5, len(cleaned) / 4.0)
 
 
 class TeachingScene(VoiceoverScene):
@@ -184,16 +242,28 @@ class TeachingScene(VoiceoverScene):
 
     def setup_layout(self, title_text, lecture_lines=None):
         # Voiceover TTS (Manim's own system) — call before any self.voiceover().
-        self.set_speech_service(make_speech_service())
+        # In C2V_TTS_MODE=off we intentionally skip wiring a speech service so
+        # nothing touches Doubao/edge-tts and self.teach() must not call voiceover.
+        service = make_speech_service()
+        if service is not None:
+            self.set_speech_service(service)
 
         self.camera.background_color = "#000000"
-        self.title = Text(title_text, font_size=28, color=WHITE).to_edge(UP)
+        self.title = Text(
+            title_text,
+            font=CHINESE_FONT,
+            font_size=28,
+            color=WHITE,
+        ).to_edge(UP)
         self.add(self.title)
 
         # Optional left-side lecture bullets (visual only). Narration is spoken
         # separately via self.teach(...).
         if lecture_lines:
-            lecture_texts = [Text(line, font_size=22, color=WHITE) for line in lecture_lines]
+            lecture_texts = [
+                Text(line, font=CHINESE_FONT, font_size=22, color=WHITE)
+                for line in lecture_lines
+            ]
             self.lecture = VGroup(*lecture_texts).arrange(DOWN, aligned_edge=LEFT).scale(0.8)
             self.lecture.to_edge(LEFT, buff=0.2)
             self.add(self.lecture)
@@ -210,7 +280,15 @@ class TeachingScene(VoiceoverScene):
 
     def teach(self, text, *animations, run_time=None, **kwargs):
         """Speak `text` (Manim voiceover TTS) while playing `animations`, timed to
-        the narration. This is the ONLY way narration should be produced."""
+        the narration. In C2V_TTS_MODE=off, skip voiceover entirely and time the
+        animation off an estimated narration length so no network TTS is used."""
+        if TTS_MODE == "off":
+            rt = run_time or _estimated_narration_seconds(text)
+            if animations:
+                self.play(*animations, run_time=rt, **kwargs)
+            else:
+                self.safe_wait(rt)
+            return
         with self.voiceover(text=text) as tracker:
             if animations:
                 self.play(*animations, run_time=(run_time or tracker.duration), **kwargs)

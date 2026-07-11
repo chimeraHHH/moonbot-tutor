@@ -101,6 +101,7 @@ jobs:
           C2V_LLM_API_KEY: ${{ secrets.C2V_LLM_API_KEY }}
           C2V_LLM_BASE_URL: ${{ secrets.C2V_LLM_BASE_URL }}
           C2V_LLM_MODEL: ${{ secrets.C2V_LLM_MODEL }}
+          C2V_LLM_PROVIDER: ${{ secrets.C2V_LLM_PROVIDER }}
           C2V_FIX_MODEL: ${{ secrets.C2V_FIX_MODEL }}
           C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -127,6 +128,7 @@ jobs:
             printf 'C2V_LLM_API_KEY=%q\n' "$C2V_LLM_API_KEY"
             printf 'C2V_LLM_BASE_URL=%q\n' "$C2V_LLM_BASE_URL"
             printf 'C2V_LLM_MODEL=%q\n' "$C2V_LLM_MODEL"
+            printf 'C2V_LLM_PROVIDER=%q\n' "$C2V_LLM_PROVIDER"
             printf 'C2V_FIX_MODEL=%q\n' "$C2V_FIX_MODEL"
             printf 'C2V_TTS_DOUBAO_KEY=%q\n' "$C2V_TTS_DOUBAO_KEY"
             printf 'DEEPSEEK_API_KEY=%q\n' "$DEEPSEEK_API_KEY"
@@ -173,7 +175,7 @@ jobs:
           docker rm   moonbot-code2video 2>/dev/null || true
           docker run -d --name moonbot-code2video --restart unless-stopped --network moonbot-net \
             -e PORT=8010 \
-            -e C2V_LLM_PROVIDER=gpt-4o \
+            -e C2V_LLM_PROVIDER="$C2V_LLM_PROVIDER" \
             -e C2V_LLM_API_KEY="$C2V_LLM_API_KEY" \
             -e C2V_LLM_BASE_URL="$C2V_LLM_BASE_URL" \
             -e C2V_LLM_MODEL="$C2V_LLM_MODEL" \

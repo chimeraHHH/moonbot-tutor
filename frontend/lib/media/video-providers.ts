@@ -146,6 +146,11 @@ export const VIDEO_PROVIDERS: Record<VideoProviderId, VideoProviderConfig> = {
   },
 };
 
+/** Fail closed for unknown providers, while allowing explicitly keyless ones. */
+export function videoProviderRequiresApiKey(providerId: VideoProviderId): boolean {
+  return VIDEO_PROVIDERS[providerId]?.requiresApiKey !== false;
+}
+
 export async function testVideoConnectivity(
   config: VideoGenerationConfig,
 ): Promise<{ success: boolean; message: string }> {
