@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 
-const MYTH_ROUTE = '/student?preset=myth';
+const PRESET = (key: string) => `/student?preset=${key}`;
 
 export function LandingPage() {
   const rootRef = useRef<HTMLElement>(null);
@@ -71,21 +71,21 @@ export function LandingPage() {
       </section>
 
       <section id="homeView" data-landing-section className="home-view landing-reveal" aria-label="浪漫幻想">
-        <Link className="yinghe-corner" href={MYTH_ROUTE} aria-label="进入银河神话课堂">
+        <Link className="yinghe-corner" href={PRESET('stars')} aria-label="进入银河星宿课堂">
           <img src="/landing/yinghe.png" alt="银河" /><span>银河</span>
         </Link>
         <header className="home-header"><div className="header-text-box"><p className="brand-title">浪漫幻想</p></div></header>
         <div className="orbit-field" data-parallax aria-label="天体入口">
-          <Link className="celestial sun-node active" href={MYTH_ROUTE} aria-label="进入太阳神话课堂">
+          <Link className="celestial sun-node active" href={PRESET('sun')} aria-label="进入太阳羲和课堂">
             <img src="/landing/SUN.png" alt="太阳" /><span>日</span>
           </Link>
           <div className="earth-system">
             <div className="celestial earth-node" aria-label="地球"><img src="/landing/EARTH.png" alt="地球" /></div>
-            <Link className="celestial moon-node" href={MYTH_ROUTE} aria-label="进入月球神话课堂">
+            <Link className="celestial moon-node" href={PRESET('moon')} aria-label="进入月球望舒课堂">
               <img src="/landing/MOON.png" alt="月球" /><span>月</span>
             </Link>
           </div>
-          <Link className="celestial mars-node" href={MYTH_ROUTE} aria-label="进入火星神话课堂">
+          <Link className="celestial mars-node" href={PRESET('mars')} aria-label="进入火星祝融课堂">
             <img src="/landing/MARS.png" alt="火星" /><span>荧惑</span>
           </Link>
         </div>
@@ -93,8 +93,8 @@ export function LandingPage() {
 
       <section id="aerospaceView" data-landing-section className="aerospace-view landing-reveal" aria-label="中国现代航天">
         <img src="/landing/bg3.png" alt="" className="aerospace-bg" />
-        <Link className="aerospace-moon" href="/student" aria-label="进入嫦娥探月学生端">
-          <img src="/landing/moon3.png" alt="月球" /><span>嫦娥</span>
+        <Link className="aerospace-moon" href={PRESET('chanye')} aria-label="进入月背工程课堂">
+          <img src="/landing/moon3.png" alt="月球" /><span>月背工程</span>
         </Link>
         <Link className="aerospace-rocket" href="/student?preset=rocket" aria-label="进入回收火箭课堂">
           <img src="/landing/huojianhuishou.png" alt="回收火箭" /><span>回收火箭</span>
