@@ -403,21 +403,11 @@ function HomePage() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: 'easeOut' }}
-          className="s-title text-center mb-3"
+          className="s-title text-center mb-8"
           style={{ fontSize: 'clamp(28px, 4vw, 48px)', letterSpacing: '0.12em', color: '#ffc55a' }}
         >
           星燧计划
         </motion.h1>
-
-        {/* ── Slogan ── */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
-          className="s-slogan mb-8"
-        >
-          {t('home.slogan')}
-        </motion.p>
 
         {/* ── Unified input area ── */}
         <motion.div
