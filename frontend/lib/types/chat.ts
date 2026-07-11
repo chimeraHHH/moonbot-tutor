@@ -22,6 +22,7 @@ export interface ChatMessageMetadata {
   actions?: MessageAction[];
   agentId?: string;
   agentColor?: string;
+  personaLabel?: string;
   createdAt?: number;
   interrupted?: boolean;
 }

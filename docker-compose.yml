@@ -23,13 +23,13 @@ services:
       - "8010"
     environment:
       PORT: "8010"
-      # LLM = Claude via the byteswarm relay (read from .env.local). The pipeline
-      # talks to the in-process shim, which forwards to byteswarm's messages API.
-      C2V_LLM_PROVIDER: claude
-      C2V_LLM_MODEL: ${C2V_LLM_MODEL:-claude-sonnet-4-6}
-      C2V_FIX_MODEL: ${C2V_FIX_MODEL:-claude-haiku-4-5-20251001}
-      C2V_LLM_API_KEY: ${ANTHROPIC_API_KEY}
-      C2V_LLM_BASE_URL: http://localhost:8010/shim/v1
+      # Use the same server-managed Vertex/OpenAI-compatible runtime locally and
+      # in deployment. Values come from .env.local; no provider is hardcoded.
+      C2V_LLM_PROVIDER: ${C2V_LLM_PROVIDER:-Gemini}
+      C2V_LLM_MODEL: ${C2V_LLM_MODEL:-google/gemini-3.5-flash}
+      C2V_FIX_MODEL: ${C2V_FIX_MODEL:-google/gemini-3.5-flash}
+      C2V_LLM_API_KEY: ${C2V_LLM_API_KEY}
+      C2V_LLM_BASE_URL: ${C2V_LLM_BASE_URL}
       C2V_SHIM_UPSTREAM: ${ANTHROPIC_BASE_URL:-https://byteswarm.ai/claude/v1}/messages
       # Manim narration TTS via Doubao (Volcengine seed-tts-2.0).
       C2V_TTS_DOUBAO_KEY: ${TTS_DOUBAO_API_KEY}

@@ -6,7 +6,9 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from openai import OpenAI
+from gpt_request import LLMProviderAdapter
+
+from lesson_language import localize_system_prompt
 
 from solve_schema import (
     SolvePlan,
@@ -66,12 +68,6 @@ def _resolve_base_url(base_url: Optional[str]) -> str:
 
 def _resolve_model(explicit_model: Optional[str], env_key: str, default_model: str) -> str:
     return explicit_model or os.getenv(env_key) or default_model
-
-
-def _create_openai_client(api_key: Optional[str], base_url: Optional[str]) -> OpenAI:
-    resolved_key = _resolve_api_key(api_key)
-    resolved_base = _resolve_base_url(base_url)
-    return OpenAI(api_key=resolved_key, base_url=resolved_base)
 
 
 def _extract_json_text(raw_text: str) -> str:
@@ -174,27 +170,39 @@ def run_llm1_solve_text(
     api_key: Optional[str] = None,
     system_prompt: str = DEFAULT_LLM1_SYSTEM_PROMPT,
     max_tokens: int = 4000,
+    llm: Optional[LLMProviderAdapter] = None,
+    lesson_language: Optional[str] = None,
 ) -> str:
     """
     LLM1 stage:
     question -> solution.txt
+
+    ``lesson_language`` is the course language enum ("zh-CN" | "en-US" |
+    "bilingual"). It defaults to Simplified Chinese when absent; "en-US" and
+    "bilingual" only take effect when explicitly passed. Keyword-only and last
+    so existing positional/keyword calls stay compatible.
     """
     question_text = (question or "").strip()
     if not question_text:
         raise ValueError("question must not be empty")
 
-    client = _create_openai_client(api_key=api_key, base_url=base_url)
+    system_prompt = localize_system_prompt(system_prompt, lesson_language, stage="llm1")
     model_name = _resolve_model(model, "SOLVE_LLM1_MODEL", DEFAULT_LLM1_MODEL)
-
-    response = client.chat.completions.create(
+    adapter = llm or LLMProviderAdapter(
+        provider="openai-compatible",
         model=model_name,
-        messages=[
+        api_key=_resolve_api_key(api_key),
+        base_url=_resolve_base_url(base_url),
+    )
+    response = adapter.invoke_messages(
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question_text},
         ],
+        model=model_name,
         max_tokens=max_tokens,
     )
-    solution_text = (response.choices[0].message.content or "").strip()
+    solution_text = (response.content or "").strip()
     if not solution_text:
         raise RuntimeError("LLM1 returned empty solution text")
 
@@ -214,10 +222,18 @@ def run_llm2_solve_plan(
     api_key: Optional[str] = None,
     system_prompt: str = DEFAULT_LLM2_SYSTEM_PROMPT,
     max_tokens: int = 4000,
+    llm: Optional[LLMProviderAdapter] = None,
+    lesson_language: Optional[str] = None,
 ) -> SolvePlan:
     """
     LLM2 stage:
     question + solution -> solve_plan.json
+
+    ``lesson_language`` is the course language enum ("zh-CN" | "en-US" |
+    "bilingual"). It drives the language of every natural-language plan field
+    (which becomes narration, subtitles and TTS text) while the JSON shape is
+    kept. Defaults to Simplified Chinese when absent; keyword-only and last so
+    existing calls stay compatible.
     """
     question_text = (question or "").strip()
     solution_text = (solution or "").strip()
@@ -226,8 +242,14 @@ def run_llm2_solve_plan(
     if not solution_text:
         raise ValueError("solution must not be empty")
 
-    client = _create_openai_client(api_key=api_key, base_url=base_url)
+    system_prompt = localize_system_prompt(system_prompt, lesson_language, stage="llm2")
     model_name = _resolve_model(model, "SOLVE_LLM2_MODEL", DEFAULT_LLM2_MODEL)
+    adapter = llm or LLMProviderAdapter(
+        provider="openai-compatible",
+        model=model_name,
+        api_key=_resolve_api_key(api_key),
+        base_url=_resolve_base_url(base_url),
+    )
 
     user_payload = json.dumps(
         {
@@ -251,15 +273,15 @@ def run_llm2_solve_plan(
         ensure_ascii=False,
     )
 
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
+    response = adapter.invoke_messages(
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_payload},
         ],
+        model=model_name,
         max_tokens=max_tokens,
     )
-    raw_content = (response.choices[0].message.content or "").strip()
+    raw_content = (response.content or "").strip()
     if not raw_content:
         raise RuntimeError("LLM2 returned empty plan content")
 
@@ -288,9 +310,14 @@ def run_solve_pipeline(
     api_key: Optional[str] = None,
     llm1_max_tokens: int = 4000,
     llm2_max_tokens: int = 4000,
+    llm: Optional[LLMProviderAdapter] = None,
+    lesson_language: Optional[str] = None,
 ) -> SolvePlan:
     """
     Convenience wrapper for MVP solve pipeline.
+
+    ``lesson_language`` ("zh-CN" | "en-US" | "bilingual") is forwarded to both
+    stages; defaults to Simplified Chinese when absent.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -305,6 +332,8 @@ def run_solve_pipeline(
         base_url=base_url,
         api_key=api_key,
         max_tokens=llm1_max_tokens,
+        llm=llm,
+        lesson_language=lesson_language,
     )
     return run_llm2_solve_plan(
         question=question,
@@ -314,5 +343,6 @@ def run_solve_pipeline(
         base_url=base_url,
         api_key=api_key,
         max_tokens=llm2_max_tokens,
+        llm=llm,
+        lesson_language=lesson_language,
     )
-

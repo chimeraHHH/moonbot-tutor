@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
       ...(rawBody.enableVideoGeneration != null
         ? { enableVideoGeneration: rawBody.enableVideoGeneration }
         : {}),
-      ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
+      // Generate teacher narration by default for every classroom entry point.
+      // Callers can still opt out explicitly with `enableTTS: false`.
+      enableTTS: rawBody.enableTTS ?? true,
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
     };
     const { requirement } = body;

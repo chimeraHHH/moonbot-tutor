@@ -26,7 +26,7 @@ STAGES: tuple[str, ...] = ("llm1", "llm2", "storyboard", "audio", "code", "rende
 TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
 PIPELINE_MAX_CONCURRENCY = 1
 
-PROVIDER_CHOICES = ("gpt-41", "claude", "gpt-5", "gpt-4o", "gpt-o4mini", "Gemini")
+PROVIDER_CHOICES = ("gpt-41", "claude", "gpt-5", "gpt-4o", "gpt-o4mini", "Gemini", "vertex-express")
 API_NAME_TO_SERVICE = {
     "gpt-41": "gpt41",
     "claude": "claude",
@@ -34,6 +34,7 @@ API_NAME_TO_SERVICE = {
     "gpt-4o": "gpt4o",
     "gpt-o4mini": "gpto4mini",
     "Gemini": "gemini",
+    "vertex-express": "vertex_express",
 }
 
 # Single-port backend: this process also serves the LLM shim and TTS, so the
@@ -57,7 +58,9 @@ def _apply_default_runtime(rt: "RuntimeConfig") -> None:
     rt.api_key = rt.api_key or os.getenv("C2V_LLM_API_KEY") or None
     rt.base_url = rt.base_url or os.getenv("C2V_LLM_BASE_URL") or f"http://localhost:{PORT}/shim/v1"
     rt.model = rt.model or os.getenv("C2V_LLM_MODEL") or "claude-sonnet-5"
-    if not rt.api_type or rt.api_type == "auto":
+    if rt.provider == "vertex-express":
+        rt.api_type = "vertex_express"
+    elif not rt.api_type or rt.api_type == "auto":
         rt.api_type = "openai_compatible"
 
 
@@ -138,7 +141,7 @@ class RuntimeConfig(BaseModel):
     model: Optional[str] = None
     llm1_model: Optional[str] = None
     llm2_model: Optional[str] = None
-    api_type: Literal["auto", "openai_compatible", "azure"] = "auto"
+    api_type: Literal["auto", "openai_compatible", "azure", "vertex_express"] = "auto"
 
 
 class PipelineOptions(BaseModel):
@@ -161,6 +164,11 @@ class ClientContext(BaseModel):
 class DeepSolveInput(BaseModel):
     question: str
     context: str = ""
+    # Course language enum ("zh-CN" | "en-US" | "bilingual"), resolved upstream
+    # from the frontend `languageDirective`. Forwarded to the solve LLMs so
+    # narration/subtitle/TTS text matches the course language. Optional; absent
+    # defaults to Simplified Chinese (see lesson_language.normalize_lesson_language).
+    lesson_language: Optional[str] = None
 
 
 class CreateTaskRequest(BaseModel):
@@ -511,13 +519,25 @@ class DeepSolveTaskManager:
         return provider
 
     async def _build_agent_for_task(self, bundle: TaskBundle) -> Any:
-        from agent import RunConfig, TeachingVideoAgent, get_api_and_output
+        from agent import RunConfig, TeachingVideoAgent
+        from gpt_request import LLMProviderAdapter
 
         runtime = bundle.req.runtime
         options = bundle.req.options
         provider = self._apply_runtime_api_override(runtime)
 
-        api_func, folder_name = get_api_and_output(provider)
+        adapter_provider = "vertex-express" if provider == "vertex-express" else (
+            "azure" if runtime.api_type == "azure" else "openai-compatible"
+        )
+        if not runtime.api_key:
+            raise ValueError(f"API key is required for provider: {provider}")
+        api_func = LLMProviderAdapter(
+            provider=adapter_provider,
+            model=runtime.model or "",
+            api_key=runtime.api_key,
+            base_url=runtime.base_url,
+        )
+        folder_name = "VertexExpress" if provider == "vertex-express" else provider.replace("-", "_")
         project_root = Path(__file__).resolve().parent.parent
         folder = project_root / "CASES" / f"DEEP-SOLVE_{folder_name}"
         iconfinder_api_key = self._load_iconfinder_api_key()
@@ -604,6 +624,7 @@ class DeepSolveTaskManager:
 
         runtime = bundle.req.runtime
         options = bundle.req.options
+        lesson_language = bundle.req.input.lesson_language or None
         base_url = runtime.base_url or None
         api_key = runtime.api_key or None
         llm1_model = runtime.llm1_model or runtime.model or None
@@ -624,7 +645,9 @@ class DeepSolveTaskManager:
             model=llm1_model,
             base_url=base_url,
             api_key=api_key,
+            lesson_language=lesson_language,
             max_tokens=4000,
+            llm=agent.API,
         )
         await self._record_artifact(bundle, "solution_text", solution_path)
         await self._set_stage_succeeded(bundle, stage, "LLM1 completed")
@@ -651,7 +674,9 @@ class DeepSolveTaskManager:
             model=llm2_model,
             base_url=base_url,
             api_key=api_key,
+            lesson_language=lesson_language,
             max_tokens=4000,
+            llm=agent.API,
         )
         sections_count = len(getattr(plan, "video_sections", []) or [])
         await self._record_artifact(bundle, "solve_plan", solve_plan_path)

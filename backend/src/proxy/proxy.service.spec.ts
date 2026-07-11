@@ -29,7 +29,8 @@ describe('ProxyService', () => {
       });
       const res = await service.createTask({ question: 'chain rule' } as CreateTaskDto);
 
-      expect(client.createTask).toHaveBeenCalledWith('chain rule', '');
+      // lessonLanguage is undefined here → forwarded as-is (pipeline defaults it).
+      expect(client.createTask).toHaveBeenCalledWith('chain rule', '', undefined);
       expect(res).toEqual({
         taskId: 'abc-123',
         status: 'queued',
@@ -40,7 +41,17 @@ describe('ProxyService', () => {
     it('forwards context when provided', async () => {
       (client.createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ task_id: 't', state: 'queued' });
       await service.createTask({ question: 'q', context: 'ctx' } as CreateTaskDto);
-      expect(client.createTask).toHaveBeenCalledWith('q', 'ctx');
+      expect(client.createTask).toHaveBeenCalledWith('q', 'ctx', undefined);
+    });
+
+    it('forwards lessonLanguage when provided', async () => {
+      (client.createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ task_id: 't', state: 'queued' });
+      await service.createTask({
+        question: 'q',
+        context: 'ctx',
+        lessonLanguage: 'zh-CN',
+      } as CreateTaskDto);
+      expect(client.createTask).toHaveBeenCalledWith('q', 'ctx', 'zh-CN');
     });
   });
 

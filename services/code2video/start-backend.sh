@@ -22,13 +22,18 @@ ENV_FILE="$REPO_ROOT/.env.local"
 read_env() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'; }
 ANTHROPIC_KEY="$(read_env ANTHROPIC_API_KEY)"
 ANTHROPIC_BASE="$(read_env ANTHROPIC_BASE_URL)"
+C2V_PROVIDER_FILE="$(read_env C2V_LLM_PROVIDER)"
+C2V_MODEL_FILE="$(read_env C2V_LLM_MODEL)"
+C2V_FIX_MODEL_FILE="$(read_env C2V_FIX_MODEL)"
+C2V_KEY_FILE="$(read_env C2V_LLM_API_KEY)"
+C2V_BASE_FILE="$(read_env C2V_LLM_BASE_URL)"
 
-export C2V_LLM_PROVIDER="${C2V_LLM_PROVIDER:-claude}"
-export C2V_LLM_MODEL="${C2V_LLM_MODEL:-claude-sonnet-5}"
+export C2V_LLM_PROVIDER="${C2V_LLM_PROVIDER:-${C2V_PROVIDER_FILE:-claude}}"
+export C2V_LLM_MODEL="${C2V_LLM_MODEL:-${C2V_MODEL_FILE:-claude-sonnet-5}}"
 # Fix/repair loop uses a faster model (code generation keeps C2V_LLM_MODEL).
-export C2V_FIX_MODEL="${C2V_FIX_MODEL:-claude-haiku-4-5-20251001}"
-export C2V_LLM_API_KEY="${C2V_LLM_API_KEY:-$ANTHROPIC_KEY}"
-export C2V_LLM_BASE_URL="${C2V_LLM_BASE_URL:-http://localhost:8010/shim/v1}"
+export C2V_FIX_MODEL="${C2V_FIX_MODEL:-${C2V_FIX_MODEL_FILE:-$C2V_LLM_MODEL}}"
+export C2V_LLM_API_KEY="${C2V_LLM_API_KEY:-${C2V_KEY_FILE:-$ANTHROPIC_KEY}}"
+export C2V_LLM_BASE_URL="${C2V_LLM_BASE_URL:-${C2V_BASE_FILE:-http://localhost:8010/shim/v1}}"
 export C2V_TTS_URL="${C2V_TTS_URL:-http://localhost:8010}"
 # Manim voiceover narration → Doubao TTS 2.0 ("appId:accessKey"). Shared with
 # OpenMAIC's TTS_DOUBAO_API_KEY. Unset ⇒ the manim side falls back to edge-tts.
@@ -39,9 +44,18 @@ if [ -n "$ANTHROPIC_BASE" ]; then
   export C2V_SHIM_UPSTREAM="${C2V_SHIM_UPSTREAM:-${ANTHROPIC_BASE%/}/messages}"
 fi
 
-# Local SOCKS/HTTP proxies break the OpenAI client (httpx) talking to localhost.
-unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy || true
-export NO_PROXY="127.0.0.1,localhost,0.0.0.0"
+# Keep the operator's proxy for remote providers such as Vertex AI. Loopback
+# traffic (the Nest bridge, the local TTS endpoint, and the optional Anthropic
+# shim) is excluded explicitly so it never gets routed through that proxy.
+HTTP_PROXY_FILE="$(read_env HTTP_PROXY)"
+HTTPS_PROXY_FILE="$(read_env HTTPS_PROXY)"
+NO_PROXY_FILE="$(read_env NO_PROXY)"
+[ -n "$HTTP_PROXY_FILE" ] && export HTTP_PROXY="${HTTP_PROXY:-$HTTP_PROXY_FILE}"
+[ -n "$HTTPS_PROXY_FILE" ] && export HTTPS_PROXY="${HTTPS_PROXY:-$HTTPS_PROXY_FILE}"
+export http_proxy="${http_proxy:-${HTTP_PROXY:-}}"
+export https_proxy="${https_proxy:-${HTTPS_PROXY:-}}"
+export NO_PROXY="${NO_PROXY:-${NO_PROXY_FILE:-localhost,127.0.0.1}},0.0.0.0"
+export no_proxy="$NO_PROXY"
 
 # --- Python env --------------------------------------------------------------
 VENV="${C2V_VENV:-$SCRIPT_DIR/.venv}"

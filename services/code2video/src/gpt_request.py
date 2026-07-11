@@ -6,6 +6,259 @@ import base64
 from openai import OpenAI
 import json
 import pathlib
+import httpx
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+
+@dataclass(frozen=True)
+class LLMResponse:
+    """Provider-neutral response consumed by solve/codegen/fix stages."""
+
+    content: str
+    usage: Optional[Dict[str, int]] = None
+    finish_reason: Optional[str] = None
+
+    @property
+    def text(self) -> str:
+        return self.content
+
+
+def _usage_dict(usage: Any) -> Optional[Dict[str, int]]:
+    if not usage:
+        return None
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    if prompt_tokens is None:
+        prompt_tokens = getattr(usage, "prompt_token_count", None)
+    if completion_tokens is None:
+        completion_tokens = getattr(usage, "candidates_token_count", None)
+    if total_tokens is None:
+        total_tokens = getattr(usage, "total_token_count", None)
+    if prompt_tokens is None and completion_tokens is None and total_tokens is None:
+        return None
+    return {
+        "prompt_tokens": int(prompt_tokens or 0),
+        "completion_tokens": int(completion_tokens or 0),
+        "total_tokens": int(total_tokens or 0),
+    }
+
+
+def _usage_dict_from_vertex(usage: Any) -> Optional[Dict[str, int]]:
+    if not isinstance(usage, dict):
+        return None
+    if not usage:
+        return None
+    return {
+        "prompt_tokens": int(usage.get("promptTokenCount") or 0),
+        "completion_tokens": int(usage.get("candidatesTokenCount") or 0),
+        "total_tokens": int(usage.get("totalTokenCount") or 0),
+    }
+
+
+def _vertex_model_name(model: str) -> str:
+    normalized = (model or "").strip()
+    if normalized.startswith("google/"):
+        normalized = normalized[len("google/") :]
+    if normalized.startswith("publishers/google/models/"):
+        normalized = normalized[len("publishers/google/models/") :]
+    return normalized
+
+
+def _vertex_contents(messages: List[Dict[str, Any]]) -> tuple[Optional[str], List[Dict[str, Any]]]:
+    system_parts: List[str] = []
+    contents: List[Dict[str, Any]] = []
+    for message in messages:
+        role = str(message.get("role") or "user")
+        raw_content = message.get("content", "")
+        if isinstance(raw_content, str):
+            text = raw_content
+        elif isinstance(raw_content, list):
+            text = "\n".join(
+                str(part.get("text") or "")
+                for part in raw_content
+                if isinstance(part, dict) and part.get("type") in (None, "text")
+            )
+        else:
+            text = str(raw_content)
+        if role == "system":
+            if text:
+                system_parts.append(text)
+            continue
+        contents.append(
+            {
+                "role": "model" if role == "assistant" else "user",
+                "parts": [{"text": text}],
+            }
+        )
+    return ("\n\n".join(system_parts) or None), contents
+
+
+def _vertex_response_content(response: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for candidate in response.get("candidates", []) or []:
+        content = candidate.get("content", {}) or {}
+        for part in content.get("parts", []) or []:
+            text = part.get("text")
+            if text:
+                parts.append(text)
+    return "".join(parts)
+
+
+def _request_metadata(provider: str, base_url: Optional[str], model: str) -> Dict[str, str]:
+    if provider == "vertex-express":
+        normalized_model = _vertex_model_name(model)
+        return {
+            "provider": provider,
+            "host": "aiplatform.googleapis.com",
+            "path": f"/v1/publishers/google/models/{normalized_model}:generateContent",
+            "model": normalized_model,
+            "authType": "x-goog-api-key",
+        }
+    parsed = urlparse(base_url or "https://api.openai.com/v1")
+    return {
+        "provider": provider,
+        "host": parsed.netloc,
+        "path": f"{parsed.path.rstrip('/')}/chat/completions",
+        "model": model,
+        "authType": "Bearer",
+    }
+
+
+def invoke_llm(
+    *,
+    provider: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    api_key: str,
+    base_url: Optional[str] = None,
+    api_version: Optional[str] = None,
+    max_tokens: int = 8000,
+    extra_headers: Optional[Dict[str, str]] = None,
+    http_client: Any = None,
+) -> LLMResponse:
+    """The single provider boundary used by solve, code generation and repair."""
+    metadata = _request_metadata(provider, base_url, model)
+    print(json.dumps({"event": "llm_request", **metadata}, ensure_ascii=False), flush=True)
+
+    if provider == "vertex-express":
+        system_instruction, contents = _vertex_contents(messages)
+        request_body: Dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {"maxOutputTokens": max_tokens},
+        }
+        if system_instruction:
+            request_body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        url = f"https://{metadata['host']}{metadata['path']}"
+        client = http_client or httpx.Client(timeout=120.0, trust_env=True)
+        try:
+            response = client.post(
+                url,
+                headers={
+                    "content-type": "application/json",
+                    "x-goog-api-key": api_key,
+                },
+                json=request_body,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            # Preserve the provider's error body; callers must never misreport it
+            # as an empty model response.
+            error_response = getattr(exc, "response", None)
+            error_body = getattr(error_response, "text", "") if error_response is not None else ""
+            detail = f"{exc}; response={error_body}" if error_body else str(exc)
+            raise RuntimeError(f"vertex-express request failed: {detail}") from exc
+        payload = response.json()
+        finish_reason = None
+        candidates = payload.get("candidates", []) or []
+        if candidates:
+            finish_reason = candidates[0].get("finishReason")
+        return LLMResponse(
+            content=_vertex_response_content(payload),
+            usage=_usage_dict_from_vertex(payload.get("usageMetadata")),
+            finish_reason=finish_reason,
+        )
+
+    if provider == "openai-compatible":
+        kwargs: Dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        client = OpenAI(**kwargs)
+    elif provider == "azure":
+        client = openai.AzureOpenAI(
+            azure_endpoint=base_url,
+            api_version=api_version,
+            api_key=api_key,
+        )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    request_kwargs: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+    }
+    if extra_headers:
+        request_kwargs["extra_headers"] = extra_headers
+    completion = client.chat.completions.create(**request_kwargs)
+    choice = completion.choices[0]
+    return LLMResponse(
+        content=choice.message.content or "",
+        usage=_usage_dict(completion.usage),
+        finish_reason=getattr(choice, "finish_reason", None),
+    )
+
+
+class LLMProviderAdapter:
+    """Bound provider configuration shared by every Deep Solve LLM stage."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        api_key: str,
+        base_url: Optional[str] = None,
+        api_version: Optional[str] = None,
+    ) -> None:
+        self.provider = provider
+        self.model = model
+        self.api_key = api_key
+        self.base_url = base_url
+        self.api_version = api_version
+
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 8000,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+    ) -> LLMResponse:
+        messages: List[Dict[str, Any]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        return self.invoke_messages(messages, max_tokens=max_tokens, model=model)
+
+    def invoke_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        max_tokens: int = 8000,
+        model: Optional[str] = None,
+    ) -> LLMResponse:
+        return invoke_llm(
+            provider=self.provider,
+            model=model or self.model,
+            messages=messages,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            api_version=self.api_version,
+            max_tokens=max_tokens,
+        )
 
 
 # Read and cache once

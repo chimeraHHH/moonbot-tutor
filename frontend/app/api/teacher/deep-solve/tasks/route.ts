@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { submitDeepSolveTask } from '@/lib/media/adapters/deep-solve-adapter';
+import { resolveLessonLanguage } from '@/lib/media/lesson-language';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('TeacherDeepSolve');
@@ -19,11 +20,17 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as {
       question?: unknown;
       context?: unknown;
+      lessonLanguage?: unknown;
     };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing required field: question');
     }
+    // Map the client's language hint (enum or directive) to the protocol enum
+    // at this entry point; absent defaults to Simplified Chinese downstream.
+    const lessonLanguage = resolveLessonLanguage(
+      typeof body.lessonLanguage === 'string' ? body.lessonLanguage : undefined,
+    );
     // NOTE: `context` is accepted from the client but the deep-solve adapter's
     // `VideoGenerationOptions` doesn't carry a context field — the adapter itself
     // sets `input.context = ''`. Concatenating context into the prompt is the
@@ -35,7 +42,7 @@ export async function POST(req: NextRequest) {
     try {
       const taskId = await submitDeepSolveTask(
         { providerId: 'deep-solve', apiKey: '', baseUrl },
-        { prompt, aspectRatio: '16:9' },
+        { prompt, aspectRatio: '16:9', lessonLanguage },
       );
       return apiSuccess({ taskId });
     } catch (err) {

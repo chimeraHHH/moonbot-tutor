@@ -22,6 +22,7 @@ import type {
   VideoGenerationOptions,
   VideoGenerationResult,
 } from '../types';
+import { buildNarrationRequirement, resolveLessonLanguage } from '../lesson-language';
 
 const DEFAULT_BASE_URL = 'http://localhost:8088';
 
@@ -61,10 +62,18 @@ export async function submitDeepSolveTask(
   options: VideoGenerationOptions,
 ): Promise<string> {
   const base = rootUrl(config);
+
+  // Resolve the course language to the protocol enum and force the video's
+  // narration/subtitle/TTS language. The requirement is appended to the
+  // question (user-message level); the enum is sent structurally so the Python
+  // solve LLMs enforce the same at the system level. Absent → Simplified Chinese.
+  const lessonLanguage = resolveLessonLanguage(options.lessonLanguage);
+  const question = `${options.prompt}\n\n${buildNarrationRequirement(lessonLanguage)}`;
+
   const response = await fetch(`${base}/api/v1/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: options.prompt, context: '' }),
+    body: JSON.stringify({ question, context: '', lessonLanguage }),
   });
 
   if (!response.ok) {

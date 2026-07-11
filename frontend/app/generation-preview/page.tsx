@@ -46,6 +46,7 @@ import {
 import { StepVisualizer } from './components/visualizers';
 import { resolveTaskEngineModeFromOutlineDoneEvent } from './vocational-mode';
 import { pauseCoursewareOutlines } from '@/lib/classroom/paused-courseware';
+import { createPeerAgentClassroomState } from '@/lib/classroom/peer-agents';
 
 const log = createLogger('GenerationPreview');
 const OUTLINE_REVIEW_AUTO_CONTINUE_MS = 2500;
@@ -847,6 +848,7 @@ function GenerationPreviewContent() {
       // Store stage and outlines
       const store = useStageStore.getState();
       stage.videoManifest = buildVideoManifestFromOutlines(outlines);
+      stage.peerAgentState = createPeerAgentClassroomState(stage.id, outlines);
       store.setStage(stage);
       store.setOutlines(outlines);
 

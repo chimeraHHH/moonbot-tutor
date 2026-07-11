@@ -42,13 +42,17 @@ class {section.id.title().replace('_', '')}Scene(TeachingScene):
         self.place_at_grid(tri, "C3")
         self.teach("首先，我们画一个直角三角形。", Create(tri))
 
-        formula = MathTex("a^2 + b^2 = c^2").scale(0.9)
+        formula = Text("a² + b² = c²", font=CHINESE_FONT, font_size=34)
         self.place_at_grid(formula, "B4")
         self.teach("它的两条直角边平方和，等于斜边的平方。", Write(formula))
 ```
 
 6. CONSTRAINTS:
 - Colors: light, distinguishable hex colors; keep font sizes readable.
+- The renderer must be portable and MUST NOT require a local LaTeX installation:
+  NEVER use `Tex`, `MathTex`, `TexTemplate`, or LaTeX commands. Render formulas
+  with `Text(..., font=CHINESE_FONT)` and Unicode symbols such as ², ×, ÷, √, ≤.
+- Use `font=CHINESE_FONT` for every `Text` or `MarkupText` containing Chinese.
 - Keep it simple and robust: basic, well-tested Manim CE v0.19.0 objects/animations only.
 - Assets: if the Animation Description contains [Asset: XXX/XXX.png], you MUST use those files.
 - No 3D, no external dependencies other than asset filenames.
@@ -62,4 +66,5 @@ Previous attempts failed to run. Please:
 1. Use only basic, well-tested Manim functions
 2. Keep exactly one `self.teach("<lecture line>", <animation>)` per lecture line
 3. Keep the class subclassing TeachingScene; never fall back to a plain Scene
+4. Never use Tex/MathTex/LaTeX; use Text with CHINESE_FONT and Unicode formulas
 """

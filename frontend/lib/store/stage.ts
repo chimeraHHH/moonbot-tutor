@@ -12,6 +12,10 @@ import {
 import { createSelectors } from '@/lib/utils/create-selectors';
 import type { ChatSession } from '@/lib/types/chat';
 import type { SceneOutline } from '@/lib/types/generation';
+import {
+  createPeerAgentClassroomState,
+  type PeerAgentClassroomState,
+} from '@/lib/classroom/peer-agents';
 import { createLogger } from '@/lib/logger';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { migrateScene } from '@/lib/edit/slide-schema';
@@ -107,6 +111,7 @@ interface StageState {
   setMode: (mode: StageMode) => void;
   setToolbarState: (state: ToolbarState) => void;
   setStageAgents: (configs: GeneratedAgentConfig[]) => void;
+  setPeerAgentState: (state: PeerAgentClassroomState) => void;
   setGeneratingOutlines: (outlines: SceneOutline[]) => void;
   setOutlines: (outlines: SceneOutline[]) => void;
   setGenerationComplete: (complete: boolean) => void;
@@ -291,6 +296,13 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     debouncedSaveAgents();
   },
 
+  setPeerAgentState: (peerAgentState) => {
+    const stage = get().stage;
+    if (!stage) return;
+    set({ stage: { ...stage, peerAgentState } });
+    debouncedSave();
+  },
+
   setGeneratingOutlines: (generatingOutlines) => set({ generatingOutlines }),
 
   setOutlines: (outlines) => {
@@ -461,8 +473,16 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
           });
         }
 
+        const stage =
+          data.stage.peerAgentState || outlines.length === 0
+            ? data.stage
+            : {
+                ...data.stage,
+                peerAgentState: createPeerAgentClassroomState(data.stage.id, outlines),
+              };
+
         set({
-          stage: data.stage,
+          stage,
           scenes: migrated,
           currentSceneId: data.currentSceneId,
           chats: data.chats,

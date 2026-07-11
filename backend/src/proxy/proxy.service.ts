@@ -22,7 +22,11 @@ export class ProxyService {
   constructor(private readonly client: Code2VideoClient) {}
 
   async createTask(dto: CreateTaskDto): Promise<CreateTaskResponseDto> {
-    const created = await this.client.createTask(dto.question, dto.context ?? '');
+    const created = await this.client.createTask(
+      dto.question,
+      dto.context ?? '',
+      dto.lessonLanguage,
+    );
     return {
       taskId: created.task_id,
       status: created.state as TaskState,
