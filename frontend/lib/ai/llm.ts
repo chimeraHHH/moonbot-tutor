@@ -268,6 +268,18 @@ export interface LLMRetryOptions {
 
 const DEFAULT_VALIDATE = (text: string) => text.trim().length > 0;
 
+export function describeEmptyLLMResponse(
+  source: string,
+  result: { finishReason?: unknown; usage?: unknown; response?: unknown },
+): string {
+  const finishReason = String(result.finishReason ?? 'unknown');
+  const usage = result.usage ? JSON.stringify(result.usage) : 'unknown';
+  const response = result.response as { modelId?: unknown; id?: unknown } | undefined;
+  const modelId = String(response?.modelId ?? 'unknown');
+  const responseId = String(response?.id ?? 'unknown');
+  return `LLM returned empty response [source=${source}, model=${modelId}, finishReason=${finishReason}, responseId=${responseId}, usage=${usage}]`;
+}
+
 /**
  * Unified wrapper around `generateText`.
  *
@@ -284,7 +296,7 @@ export async function callLLM<T extends GenerateTextParams>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<GenerateTextResult<any, any>> {
   const maxAttempts = (retryOptions?.retries ?? 0) + 1;
-  const validate = retryOptions?.validate ?? (maxAttempts > 1 ? DEFAULT_VALIDATE : undefined);
+  const validate = retryOptions?.validate ?? DEFAULT_VALIDATE;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let lastResult: GenerateTextResult<any, any> | undefined;
@@ -323,8 +335,9 @@ export async function callLLM<T extends GenerateTextParams>(
     }
   }
 
-  // All attempts exhausted — return last result or throw last error
-  if (lastResult) return lastResult;
+  // Empty output is never a successful generation. Throw diagnostics instead
+  // of returning an unusable result that later collapses to a generic error.
+  if (lastResult) throw new Error(describeEmptyLLMResponse(source, lastResult));
   throw lastError;
 }
 
