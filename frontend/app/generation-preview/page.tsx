@@ -45,6 +45,7 @@ import {
 } from './types';
 import { StepVisualizer } from './components/visualizers';
 import { resolveTaskEngineModeFromOutlineDoneEvent } from './vocational-mode';
+import { pauseCoursewareOutlines } from '@/lib/classroom/paused-courseware';
 
 const log = createLogger('GenerationPreview');
 const OUTLINE_REVIEW_AUTO_CONTINUE_MS = 2500;
@@ -463,12 +464,19 @@ function GenerationPreviewContent() {
         style: 'professional',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        interactiveMode: !!currentSession.requirements.interactiveMode,
-        taskEngineMode: currentSession.taskEngineMode === true,
+        // Reserved for restoring paused courseware modes:
+        // interactiveMode: !!currentSession.requirements.interactiveMode,
+        // taskEngineMode: currentSession.taskEngineMode === true,
+        interactiveMode: false,
+        taskEngineMode: false,
       };
 
       // ── Generate outlines first (infers languageDirective) ──
-      let outlines = currentSession.sceneOutlines;
+      // Cached sessions created before the pause cannot revive interactive,
+      // PBL or vocational outlines after refresh.
+      let outlines = currentSession.sceneOutlines
+        ? pauseCoursewareOutlines(currentSession.sceneOutlines)
+        : currentSession.sceneOutlines;
       let languageDirective = currentSession.languageDirective;
       let courseTitle = currentSession.courseTitle;
 
@@ -593,7 +601,7 @@ function GenerationPreviewContent() {
             .catch(reject);
         });
 
-        outlines = outlineResult.outlines;
+        outlines = pauseCoursewareOutlines(outlineResult.outlines);
         languageDirective = outlineResult.languageDirective;
         courseTitle = outlineResult.courseTitle;
         const effectiveTaskEngineMode = outlineResult.taskEngineMode;
@@ -617,7 +625,9 @@ function GenerationPreviewContent() {
 
         setStatusMessage(shouldReviewOutlines ? '' : t('generation.reviewOutlineAutoContinue'));
         setIsConfirmingOutlines(false);
-        outlines = await waitForOutlineReviewChoice(outlines, shouldReviewOutlines, signal);
+        outlines = pauseCoursewareOutlines(
+          await waitForOutlineReviewChoice(outlines, shouldReviewOutlines, signal),
+        );
         clearOutlineReviewTimer();
         currentSession = {
           ...currentSession,
@@ -643,7 +653,8 @@ function GenerationPreviewContent() {
       if (!outlines || outlines.length === 0) {
         throw new Error(t('generation.outlineEmptyResponse'));
       }
-      stage.taskEngineMode = currentSession.taskEngineMode === true;
+      // stage.taskEngineMode = currentSession.taskEngineMode === true;
+      stage.taskEngineMode = false;
 
       // Store languageDirective on the stage
       if (languageDirective) {

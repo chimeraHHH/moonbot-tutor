@@ -2,12 +2,25 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'agent/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
+  code2video:
+    name: Check code2video (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile Python sources
+        run: python -m compileall -q services/code2video/src services/code2video/prompts
+
   test:
     name: Build & test (NestJS)
     runs-on: ubuntu-latest
@@ -54,7 +67,7 @@ jobs:
     name: Ship & build & run on server
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [test, frontend]
+    needs: [code2video, test, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +104,12 @@ jobs:
           C2V_FIX_MODEL: ${{ secrets.C2V_FIX_MODEL }}
           C2V_TTS_DOUBAO_KEY: ${{ secrets.C2V_TTS_DOUBAO_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_MODELS: ${{ secrets.GOOGLE_MODELS }}
+          GOOGLE_VERTEX_PROJECT: ${{ secrets.GOOGLE_VERTEX_PROJECT }}
+          GOOGLE_VERTEX_LOCATION: ${{ secrets.GOOGLE_VERTEX_LOCATION }}
+          DEFAULT_MODEL: ${{ secrets.DEFAULT_MODEL }}
+          MODEL_ROUTES: ${{ secrets.MODEL_ROUTES }}
         run: |
           set -euo pipefail
           REMOTE="$SERVER_USER@$SERVER_HOST"
@@ -111,6 +130,12 @@ jobs:
             printf 'C2V_FIX_MODEL=%q\n' "$C2V_FIX_MODEL"
             printf 'C2V_TTS_DOUBAO_KEY=%q\n' "$C2V_TTS_DOUBAO_KEY"
             printf 'DEEPSEEK_API_KEY=%q\n' "$DEEPSEEK_API_KEY"
+            printf 'GOOGLE_API_KEY=%q\n' "$GOOGLE_API_KEY"
+            printf 'GOOGLE_MODELS=%q\n' "$GOOGLE_MODELS"
+            printf 'GOOGLE_VERTEX_PROJECT=%q\n' "$GOOGLE_VERTEX_PROJECT"
+            printf 'GOOGLE_VERTEX_LOCATION=%q\n' "$GOOGLE_VERTEX_LOCATION"
+            printf 'DEFAULT_MODEL=%q\n' "$DEFAULT_MODEL"
+            printf 'MODEL_ROUTES=%q\n' "$MODEL_ROUTES"
             cat <<'REMOTE_SCRIPT'
           cd ~
           rm -rf moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
@@ -167,8 +192,12 @@ jobs:
           docker rm   moonbot-frontend 2>/dev/null || true
           docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
             -e PORT=3000 \
-            -e DEFAULT_MODEL=deepseek:deepseek-v4-pro \
-            -e DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+            -e DEFAULT_MODEL="$DEFAULT_MODEL" \
+            -e MODEL_ROUTES="$MODEL_ROUTES" \
+            -e GOOGLE_API_KEY="$GOOGLE_API_KEY" \
+            -e GOOGLE_MODELS="$GOOGLE_MODELS" \
+            -e GOOGLE_VERTEX_PROJECT="$GOOGLE_VERTEX_PROJECT" \
+            -e GOOGLE_VERTEX_LOCATION="$GOOGLE_VERTEX_LOCATION" \
             -e VIDEO_DEEPSOLVE_BASE_URL=http://moonbot-tutor-backend:3000 \
             -e TTS_DOUBAO_API_KEY="$C2V_TTS_DOUBAO_KEY" \
             moonbot-frontend:ci

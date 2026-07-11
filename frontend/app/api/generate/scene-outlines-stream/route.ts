@@ -36,7 +36,12 @@ import type {
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
-import { resolveVocationalActive } from '@/lib/config/feature-flags';
+// Reserved for restoring vocational task-engine generation:
+// import { resolveVocationalActive } from '@/lib/config/feature-flags';
+import {
+  PAUSED_COURSEWARE_INSTRUCTION,
+  pauseCoursewareOutline,
+} from '@/lib/classroom/paused-courseware';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -242,28 +247,27 @@ function normalizeTaskEngineOutline(outline: SceneOutline, requirement: string):
 }
 
 function sanitizeNonTaskEngineOutline(outline: SceneOutline): SceneOutline {
-  if (outline.widgetType !== 'procedural-skill') {
-    return outline;
+  let normalized = outline;
+  if (outline.widgetType === 'procedural-skill') {
+    const widgetOutline = { ...(outline.widgetOutline ?? {}) };
+    delete widgetOutline.procedureType;
+    delete widgetOutline.task;
+    delete widgetOutline.tools;
+    delete widgetOutline.steps;
+    delete widgetOutline.successCriteria;
+    delete widgetOutline.errorConsequences;
+
+    normalized = {
+      ...outline,
+      type: 'interactive',
+      widgetType: 'diagram',
+      description: outline.description
+        ? `${outline.description} Present this as a process or structure diagram.`
+        : 'Present this topic as a process or structure diagram.',
+      widgetOutline,
+    };
   }
-
-  const widgetOutline = { ...(outline.widgetOutline ?? {}) };
-  delete widgetOutline.procedureType;
-  delete widgetOutline.task;
-  delete widgetOutline.tools;
-  delete widgetOutline.steps;
-  delete widgetOutline.successCriteria;
-  delete widgetOutline.errorConsequences;
-
-  // procedural-skill is gated behind taskEngineMode to protect ordinary MAIC generation.
-  return {
-    ...outline,
-    type: 'interactive',
-    widgetType: 'diagram',
-    description: outline.description
-      ? `${outline.description} Present this as a process or structure diagram.`
-      : 'Present this topic as a process or structure diagram.',
-    widgetOutline,
-  };
+  return pauseCoursewareOutline(normalized);
 }
 
 function ensureUniqueOutlineId(outline: SceneOutline, usedIds: Set<string>): SceneOutline {
@@ -358,9 +362,12 @@ export async function POST(req: NextRequest) {
     // Build teacher context from agents (if available)
     const teacherContext = formatTeacherPersonaForPrompt(agents);
 
-    // Check if Interactive Mode or server-enabled Task Engine mode is enabled.
-    const interactiveMode = requirements.interactiveMode ?? false;
-    const taskEngineMode = resolveVocationalActive(requirements);
+    // Interactive/PBL/vocational modes are paused. Stale browser state cannot
+    // re-enable them; retain the original expressions for a future restore.
+    // const interactiveMode = requirements.interactiveMode ?? false;
+    // const taskEngineMode = resolveVocationalActive(requirements);
+    const interactiveMode = false;
+    const taskEngineMode = false;
     const promptId = taskEngineMode
       ? PROMPT_IDS.TASK_ENGINE_OUTLINES
       : interactiveMode
@@ -383,6 +390,8 @@ export async function POST(req: NextRequest) {
     if (!prompts) {
       return apiError('INTERNAL_ERROR', 500, 'Prompt template not found');
     }
+
+    const authoritativeSystem = `${prompts.system}\n\n${PAUSED_COURSEWARE_INSTRUCTION}`;
 
     log.info(
       `Generating outlines: "${requirements.requirement.substring(0, 50)}" [model=${modelString}]`,
@@ -424,7 +433,7 @@ export async function POST(req: NextRequest) {
           const streamParams = visionImages?.length
             ? {
                 model: languageModel,
-                system: prompts.system,
+                system: authoritativeSystem,
                 messages: [
                   {
                     role: 'user' as const,
@@ -438,7 +447,7 @@ export async function POST(req: NextRequest) {
               }
             : {
                 model: languageModel,
-                system: prompts.system,
+                system: authoritativeSystem,
                 prompt: prompts.user,
                 maxOutputTokens: modelInfo?.outputWindow,
                 abortSignal: req.signal,
