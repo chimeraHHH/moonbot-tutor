@@ -71,6 +71,8 @@
  * Add new image providers here as union members.
  * Keep in sync with IMAGE_PROVIDERS registry in constants.ts
  */
+import type { LessonLanguage } from './lesson-language';
+
 export type ImageProviderId =
   | 'seedream'
   | 'openai-image'
@@ -264,6 +266,12 @@ export interface VideoGenerationOptions {
   aspectRatio?: '16:9' | '4:3' | '1:1' | '9:16' | '3:4' | '21:9';
   /** Desired output resolution */
   resolution?: '480p' | '720p' | '1080p';
+  /**
+   * Course language enum ("zh-CN" | "en-US" | "bilingual"). Used by the Deep
+   * Solve adapter to force narration/subtitle/TTS language. Resolved from the
+   * course `languageDirective` at the entry point; absent defaults to Chinese.
+   */
+  lessonLanguage?: LessonLanguage;
 }
 
 /**

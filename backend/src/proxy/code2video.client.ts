@@ -84,7 +84,20 @@ export class Code2VideoClient {
     return res;
   }
 
-  async createTask(question: string, context: string): Promise<C2VCreateResponse> {
+  async createTask(
+    question: string,
+    context: string,
+    lessonLanguage?: string,
+  ): Promise<C2VCreateResponse> {
+    const input: { question: string; context: string; lesson_language?: string } = {
+      question,
+      context: context ?? '',
+    };
+    // Only forward when provided — the pipeline defaults an absent value to
+    // Simplified Chinese, so omitting it keeps legacy requests Chinese.
+    if (lessonLanguage) {
+      input.lesson_language = lessonLanguage;
+    }
     const res = await this.send(
       this.url('/tasks'),
       {
@@ -92,7 +105,7 @@ export class Code2VideoClient {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           engine: 'code2video',
-          input: { question, context: context ?? '' },
+          input,
         }),
       },
       'create task',

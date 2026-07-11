@@ -11,6 +11,7 @@ import { createLogger } from '@/lib/logger';
 import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import { generateImage } from '@/lib/media/image-providers';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
+import { resolveLessonLanguage } from '@/lib/media/lesson-language';
 import { generateTTS } from '@/lib/audio/tts-providers';
 import { DEFAULT_TTS_VOICES, DEFAULT_TTS_MODELS, TTS_PROVIDERS } from '@/lib/audio/constants';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
@@ -79,9 +80,14 @@ export async function generateMediaForClassroom(
   outlines: SceneOutline[],
   classroomId: string,
   baseUrl: string,
+  languageDirective?: string,
 ): Promise<Record<string, string>> {
   const mediaDir = path.join(CLASSROOMS_DIR, classroomId, 'media');
   await ensureDir(mediaDir);
+
+  // Map the free-text course directive to the protocol enum once, at this
+  // entry point. Only the Deep Solve (Manim) video provider consumes it.
+  const lessonLanguage = resolveLessonLanguage(languageDirective);
 
   // Collect all media generation requests from outlines
   const requests = outlines.flatMap((o) => o.mediaGenerations ?? []);
@@ -156,6 +162,7 @@ export async function generateMediaForClassroom(
         const normalized = normalizeVideoOptions(providerId, {
           prompt: req.prompt,
           aspectRatio: (req.aspectRatio as '16:9' | '4:3' | '1:1' | '9:16') || '16:9',
+          lessonLanguage,
         });
 
         const result = await generateVideo(

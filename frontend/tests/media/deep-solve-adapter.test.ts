@@ -33,7 +33,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('deep-solve adapter → openapi BFF', () => {
-  it('submits via POST /api/v1/tasks with {question, context}', async () => {
+  it('submits via POST /api/v1/tasks, defaulting to zh-CN narration/subtitle/TTS', async () => {
     fetchMock.mockResolvedValue(
       jsonRes({ taskId: 't-1', status: 'queued', stages: [] }, 202),
     );
@@ -42,10 +42,27 @@ describe('deep-solve adapter → openapi BFF', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${BASE}/api/v1/tasks`);
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({
-      question: 'pythagorean theorem',
-      context: '',
-    });
+    const body = JSON.parse(init.body as string);
+    expect(body.context).toBe('');
+    // No lessonLanguage passed → defaults to Simplified Chinese.
+    expect(body.lessonLanguage).toBe('zh-CN');
+    expect(body.question).toContain('pythagorean theorem');
+    expect(body.question).toContain('简体中文');
+  });
+
+  it('forwards an explicit lessonLanguage and localizes the narration requirement', async () => {
+    fetchMock.mockResolvedValue(
+      jsonRes({ taskId: 't-2', status: 'queued', stages: [] }, 202),
+    );
+    await submitDeepSolveTask(config, {
+      ...opts,
+      lessonLanguage: 'en-US',
+    } as unknown as VideoGenerationOptions);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.lessonLanguage).toBe('en-US');
+    expect(body.question).toContain('English');
+    expect(body.question).not.toContain('简体中文');
   });
 
   it('polls GET /api/v1/tasks/{id} and resolves the video url on success', async () => {

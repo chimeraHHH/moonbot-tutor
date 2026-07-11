@@ -164,6 +164,11 @@ class ClientContext(BaseModel):
 class DeepSolveInput(BaseModel):
     question: str
     context: str = ""
+    # Course language enum ("zh-CN" | "en-US" | "bilingual"), resolved upstream
+    # from the frontend `languageDirective`. Forwarded to the solve LLMs so
+    # narration/subtitle/TTS text matches the course language. Optional; absent
+    # defaults to Simplified Chinese (see lesson_language.normalize_lesson_language).
+    lesson_language: Optional[str] = None
 
 
 class CreateTaskRequest(BaseModel):
@@ -619,6 +624,7 @@ class DeepSolveTaskManager:
 
         runtime = bundle.req.runtime
         options = bundle.req.options
+        lesson_language = bundle.req.input.lesson_language or None
         base_url = runtime.base_url or None
         api_key = runtime.api_key or None
         llm1_model = runtime.llm1_model or runtime.model or None
@@ -639,6 +645,7 @@ class DeepSolveTaskManager:
             model=llm1_model,
             base_url=base_url,
             api_key=api_key,
+            lesson_language=lesson_language,
             max_tokens=4000,
             llm=agent.API,
         )
@@ -667,6 +674,7 @@ class DeepSolveTaskManager:
             model=llm2_model,
             base_url=base_url,
             api_key=api_key,
+            lesson_language=lesson_language,
             max_tokens=4000,
             llm=agent.API,
         )

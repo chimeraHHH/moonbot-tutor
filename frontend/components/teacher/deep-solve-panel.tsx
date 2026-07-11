@@ -50,7 +50,7 @@ interface SubmitResponse {
 }
 
 export function DeepSolvePanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [question, setQuestion] = useState('');
   const [context, setContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -128,7 +128,11 @@ export function DeepSolvePanel() {
       const res = await fetch('/api/teacher/deep-solve/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, context: context.trim() || undefined }),
+        body: JSON.stringify({
+          question: q,
+          context: context.trim() || undefined,
+          lessonLanguage: locale,
+        }),
       });
       const data = (await res.json()) as SubmitResponse;
       if (!res.ok || !data.success || !data.taskId) {

@@ -65,6 +65,18 @@ describe('Code2VideoClient', () => {
       expect(res.task_id).toBe('t-1');
     });
 
+    it('forwards lesson_language into input when provided', async () => {
+      fetchMock.mockResolvedValue(
+        fakeResponse({ json: { task_id: 't-1', state: 'queued' } }),
+      );
+      await makeClient().createTask('q', 'ctx', 'zh-CN');
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init.body)).toEqual({
+        engine: 'code2video',
+        input: { question: 'q', context: 'ctx', lesson_language: 'zh-CN' },
+      });
+    });
+
     it('maps a 400 to BadRequestException', async () => {
       fetchMock.mockResolvedValue(fakeResponse({ status: 400, text: 'bad input' }));
       await expect(makeClient().createTask('q', '')).rejects.toBeInstanceOf(BadRequestException);
