@@ -333,11 +333,11 @@ function HomePage() {
   };
 
   useEffect(() => {
-    if (!preset || !hasUsableProvider || presetStartedRef.current) return;
+    if (!preset || presetStartedRef.current) return;
     presetStartedRef.current = true;
     setForm((previous) => ({ ...previous, requirement: preset.prompt }));
     updateRequirementCache(preset.prompt);
-    void handleGenerate(preset.prompt);
+    if (hasUsableProvider) void handleGenerate(preset.prompt);
     // The preset must be consumed only once per page mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset?.key, hasUsableProvider]);
