@@ -26,7 +26,7 @@ STAGES: tuple[str, ...] = ("llm1", "llm2", "storyboard", "audio", "code", "rende
 TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
 PIPELINE_MAX_CONCURRENCY = 1
 
-PROVIDER_CHOICES = ("gpt-41", "claude", "gpt-5", "gpt-4o", "gpt-o4mini", "Gemini")
+PROVIDER_CHOICES = ("gpt-41", "claude", "gpt-5", "gpt-4o", "gpt-o4mini", "Gemini", "gemini-vertex")
 API_NAME_TO_SERVICE = {
     "gpt-41": "gpt41",
     "claude": "claude",
@@ -34,6 +34,7 @@ API_NAME_TO_SERVICE = {
     "gpt-4o": "gpt4o",
     "gpt-o4mini": "gpto4mini",
     "Gemini": "gemini",
+    "gemini-vertex": "gemini_vertex",
 }
 
 # Single-port backend: this process also serves the LLM shim and TTS, so the

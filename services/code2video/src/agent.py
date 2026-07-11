@@ -888,6 +888,7 @@ def get_api_and_output(API_name):
         "gpt-4o": (request_gpt4o_token, "Chatgpt4o"),
         "gpt-o4mini": (request_o4mini_token, "Chatgpto4mini"),
         "Gemini": (request_gemini_token, "Gemini"),
+        "gemini-vertex": (request_gemini_vertex, "GeminiVertex"),
     }
     try:
         return mapping[API_name]
