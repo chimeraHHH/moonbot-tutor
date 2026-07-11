@@ -53,6 +53,7 @@ import { useImportClassroom } from '@/lib/import/use-import-classroom';
 import { shouldShowVocationalTestUi } from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { resolveStudentPreset } from '@/lib/presets/student-presets';
+import { COURSEWARE_FEATURES_ENABLED } from '@/lib/classroom/paused-courseware';
 
 const log = createLogger('Home');
 
@@ -280,8 +281,11 @@ function HomePage() {
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,
-        interactiveMode: form.vocationalTestMode ? true : form.interactiveMode,
-        ...(form.vocationalTestMode ? { taskEngineMode: true } : {}),
+        // Reserved for restoring paused courseware modes:
+        // interactiveMode: form.vocationalTestMode ? true : form.interactiveMode,
+        // ...(form.vocationalTestMode ? { taskEngineMode: true } : {}),
+        interactiveMode: false,
+        taskEngineMode: false,
       };
 
       let pdfStorageKey: string | undefined;
@@ -449,8 +453,8 @@ function HomePage() {
                 />
               </div>
 
-              {/* Interactive mode toggle */}
-              <Tooltip>
+              {/* Interactive mode UI is retained but centrally paused. */}
+              {COURSEWARE_FEATURES_ENABLED && <Tooltip>
                 <TooltipTrigger asChild>
                   <motion.button
                     whileTap={{ scale: 0.95 }}
@@ -478,7 +482,7 @@ function HomePage() {
                 <TooltipContent side="top" className="text-xs">
                   {t('toolbar.interactiveModeHint')}
                 </TooltipContent>
-              </Tooltip>
+              </Tooltip>}
 
               {/* Voice input */}
               <SpeechButton
@@ -515,7 +519,8 @@ function HomePage() {
           </div>
         </motion.div>
 
-        {showVocationalTestUi && (
+        {/* Vocational task UI is retained but centrally paused. */}
+        {COURSEWARE_FEATURES_ENABLED && showVocationalTestUi && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1118,7 +1123,8 @@ function ClassroomCard({
   }, [editing]);
 
   const isTaskEngineMode = classroom.taskEngineMode === true;
-  const showModeBadge = classroom.interactiveMode || isTaskEngineMode;
+  const showModeBadge =
+    COURSEWARE_FEATURES_ENABLED && (classroom.interactiveMode || isTaskEngineMode);
   const ModeBadgeIcon = isTaskEngineMode ? Sparkles : Atom;
   const modeBadgeLabel = isTaskEngineMode ? 'Vocational Mode' : t('toolbar.interactiveModeLabel');
 

@@ -24,7 +24,7 @@ import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { llmApiError } from '@/lib/server/llm-error-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
-import { resolveVocationalActive } from '@/lib/config/feature-flags';
+import { pauseCoursewareOutline } from '@/lib/classroom/paused-courseware';
 
 const log = createLogger('Scene Content API');
 
@@ -76,7 +76,9 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'stageId is required');
     }
 
-    const outline: SceneOutline = { ...rawOutline };
+    // Sanitize direct/stale clients too; outline generation is not the only
+    // route capable of reaching content generation.
+    const outline = pauseCoursewareOutline({ ...rawOutline });
 
     // ── Model resolution from request headers/body ──
     // Route per scene-content type (e.g. `scene-content:quiz`); getStageModel
@@ -136,7 +138,7 @@ export async function POST(req: NextRequest) {
     };
 
     // ── Apply fallbacks ──
-    const vocationalActive = resolveVocationalActive(requirements);
+    const vocationalActive = false;
     const effectiveOutline = applyOutlineFallbacks(outline, !!languageModel, {
       allowProceduralSkill: vocationalActive,
     });

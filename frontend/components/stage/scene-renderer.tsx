@@ -4,8 +4,9 @@ import { useMemo } from 'react';
 import type { Scene, StageMode } from '@/lib/types/stage';
 import { SlideEditor as SlideRenderer } from '../slide-renderer/Editor';
 import { QuizView } from '../scene-renderers/quiz-view';
-import { InteractiveRenderer } from '../scene-renderers/interactive-renderer';
-import { PBLRenderer } from '../scene-renderers/pbl-renderer';
+// Reserved for restoring paused playback:
+// import { InteractiveRenderer } from '../scene-renderers/interactive-renderer';
+// import { PBLRenderer } from '../scene-renderers/pbl-renderer';
 
 interface SceneRendererProps {
   readonly scene: Scene;
@@ -28,14 +29,31 @@ export function SceneRenderer({ scene, mode }: SceneRendererProps) {
         return <QuizView key={scene.id} questions={scene.content.questions} sceneId={scene.id} />;
       case 'interactive':
         if (scene.content.type !== 'interactive') return <div>Invalid interactive content</div>;
-        return <InteractiveRenderer content={scene.content} sceneId={scene.id} />;
+        // return <InteractiveRenderer content={scene.content} sceneId={scene.id} />;
+        return <PausedCoursewareNotice />;
       case 'pbl':
         if (scene.content.type !== 'pbl') return <div>Invalid PBL content</div>;
-        return <PBLRenderer content={scene.content} mode={mode} sceneId={scene.id} />;
+        // return <PBLRenderer content={scene.content} mode={mode} sceneId={scene.id} />;
+        return <PausedCoursewareNotice />;
       default:
         return <div>Unknown scene type</div>;
     }
   }, [scene, mode]);
 
   return <div className="w-full h-full">{renderer}</div>;
+}
+
+function PausedCoursewareNotice() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-slate-50 px-8 text-center dark:bg-slate-900">
+      <div className="max-w-lg space-y-2">
+        <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+          互动与项目课件已暂停
+        </p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          这是暂停前生成的页面，请重新生成本课程以获得普通静态讲解页。
+        </p>
+      </div>
+    </div>
+  );
 }

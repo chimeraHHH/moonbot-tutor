@@ -47,7 +47,12 @@ interface OutlinesEditorProps {
   onCollapse?: () => void;
 }
 
-const SCENE_TYPES: SceneType[] = ['slide', 'quiz', 'interactive', 'pbl'];
+const SCENE_TYPES: SceneType[] = [
+  'slide',
+  'quiz',
+  // 'interactive', // Reserved for restoring interactive authoring.
+  // 'pbl', // Reserved for restoring PBL authoring.
+];
 
 const TYPE_THEME: Record<
   SceneType,
