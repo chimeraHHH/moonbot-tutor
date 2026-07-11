@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Sparkles, AlertCircle, AlertTriangle, ArrowLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,14 +45,15 @@ import {
 } from './types';
 import { StepVisualizer } from './components/visualizers';
 import { resolveTaskEngineModeFromOutlineDoneEvent } from './vocational-mode';
-import { pauseCoursewareOutlines } from '@/lib/classroom/paused-courseware';
-import { createPeerAgentClassroomState } from '@/lib/classroom/peer-agents';
+import '@/app/student.css';
 
 const log = createLogger('GenerationPreview');
 const OUTLINE_REVIEW_AUTO_CONTINUE_MS = 2500;
 
 function GenerationPreviewContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
   const { t } = useI18n();
   const hasStartedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -211,6 +212,7 @@ function GenerationPreviewContent() {
   // Auto-start generation when session is loaded
   useEffect(() => {
     if (!session || hasStartedRef.current) return;
+    if (isDemo) return; // demo mode: skip real API calls
     const needsOutlines = !session.sceneOutlines || session.sceneOutlines.length === 0;
     const phase = session.previewPhase;
     const shouldAutoStart =
@@ -226,6 +228,21 @@ function GenerationPreviewContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // Demo mode: cycle through step indices to show StepVisualizer animation
+  useEffect(() => {
+    if (!isDemo || !session) return;
+    const steps = getActiveSteps(session);
+    if (steps.length === 0) return;
+    setStatusMessage('正在生成课程内容……');
+    let idx = 0;
+    const timer = setInterval(() => {
+      idx = (idx + 1) % steps.length;
+      setCurrentStepIndex(idx);
+    }, 2000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemo, session]);
 
   // Main generation flow
   const startGeneration = async (sessionOverride?: GenerationSessionState) => {
@@ -465,19 +482,12 @@ function GenerationPreviewContent() {
         style: 'professional',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        // Reserved for restoring paused courseware modes:
-        // interactiveMode: !!currentSession.requirements.interactiveMode,
-        // taskEngineMode: currentSession.taskEngineMode === true,
-        interactiveMode: false,
-        taskEngineMode: false,
+        interactiveMode: !!currentSession.requirements.interactiveMode,
+        taskEngineMode: currentSession.taskEngineMode === true,
       };
 
       // ── Generate outlines first (infers languageDirective) ──
-      // Cached sessions created before the pause cannot revive interactive,
-      // PBL or vocational outlines after refresh.
-      let outlines = currentSession.sceneOutlines
-        ? pauseCoursewareOutlines(currentSession.sceneOutlines)
-        : currentSession.sceneOutlines;
+      let outlines = currentSession.sceneOutlines;
       let languageDirective = currentSession.languageDirective;
       let courseTitle = currentSession.courseTitle;
 
@@ -602,7 +612,7 @@ function GenerationPreviewContent() {
             .catch(reject);
         });
 
-        outlines = pauseCoursewareOutlines(outlineResult.outlines);
+        outlines = outlineResult.outlines;
         languageDirective = outlineResult.languageDirective;
         courseTitle = outlineResult.courseTitle;
         const effectiveTaskEngineMode = outlineResult.taskEngineMode;
@@ -626,9 +636,7 @@ function GenerationPreviewContent() {
 
         setStatusMessage(shouldReviewOutlines ? '' : t('generation.reviewOutlineAutoContinue'));
         setIsConfirmingOutlines(false);
-        outlines = pauseCoursewareOutlines(
-          await waitForOutlineReviewChoice(outlines, shouldReviewOutlines, signal),
-        );
+        outlines = await waitForOutlineReviewChoice(outlines, shouldReviewOutlines, signal);
         clearOutlineReviewTimer();
         currentSession = {
           ...currentSession,
@@ -654,8 +662,7 @@ function GenerationPreviewContent() {
       if (!outlines || outlines.length === 0) {
         throw new Error(t('generation.outlineEmptyResponse'));
       }
-      // stage.taskEngineMode = currentSession.taskEngineMode === true;
-      stage.taskEngineMode = false;
+      stage.taskEngineMode = currentSession.taskEngineMode === true;
 
       // Store languageDirective on the stage
       if (languageDirective) {
@@ -848,7 +855,6 @@ function GenerationPreviewContent() {
       // Store stage and outlines
       const store = useStageStore.getState();
       stage.videoManifest = buildVideoManifestFromOutlines(outlines);
-      stage.peerAgentState = createPeerAgentClassroomState(stage.id, outlines);
       store.setStage(stage);
       store.setOutlines(outlines);
 
@@ -1128,8 +1134,8 @@ function GenerationPreviewContent() {
   // Still loading session from sessionStorage
   if (!sessionLoaded) {
     return (
-      <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
-        <div className="text-center text-muted-foreground">
+      <div className="student-page min-h-[100dvh] w-full flex items-center justify-center p-4">
+        <div className="text-center" style={{ color: 'var(--muted)' }}>
           <div className="size-8 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto" />
         </div>
       </div>
@@ -1139,13 +1145,17 @@ function GenerationPreviewContent() {
   // No session found
   if (!session) {
     return (
-      <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
-        <Card className="p-8 max-w-md w-full">
+      <div className="student-page min-h-[100dvh] w-full flex items-center justify-center p-4">
+        <Card className="s-card p-8 max-w-md w-full">
           <div className="text-center space-y-4">
-            <AlertCircle className="size-12 text-muted-foreground mx-auto" />
-            <h2 className="text-xl font-semibold">{t('generation.sessionNotFound')}</h2>
-            <p className="text-sm text-muted-foreground">{t('generation.sessionNotFoundDesc')}</p>
-            <Button onClick={() => router.push('/')} className="w-full">
+            <AlertCircle className="size-12 mx-auto" style={{ color: 'rgba(198,208,223,0.45)' }} />
+            <h2 className="text-xl font-semibold" style={{ color: '#fff4dc' }}>{t('generation.sessionNotFound')}</h2>
+            <p className="text-sm" style={{ color: 'rgba(198,208,223,0.65)' }}>{t('generation.sessionNotFoundDesc')}</p>
+            <Button
+              onClick={() => router.push('/')}
+              className="w-full"
+              style={{ background: 'rgba(5,7,17,0.82)', border: '1px solid rgba(255,197,90,0.5)', color: '#ffc55a', borderRadius: '8px' }}
+            >
               <ArrowLeft className="size-4 mr-2" />
               {t('generation.backToHome')}
             </Button>
@@ -1171,13 +1181,19 @@ function GenerationPreviewContent() {
     const editorOutlines = session.sceneOutlines ?? streamingOutlines ?? [];
 
     return (
-      <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 relative overflow-hidden">
+      <div className="student-page min-h-[100dvh] w-full flex flex-col items-center p-4 relative overflow-hidden">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="absolute top-4 left-4 z-20"
         >
-          <Button variant="ghost" size="sm" onClick={goBackToHome} disabled={isConfirmingOutlines}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goBackToHome}
+            disabled={isConfirmingOutlines}
+            style={{ color: 'rgba(198,208,223,0.7)', border: '1px solid rgba(255,197,90,0.25)', borderRadius: '999px' }}
+          >
             <ArrowLeft className="size-4 mr-2" />
             {t('generation.backToHome')}
           </Button>
@@ -1196,20 +1212,20 @@ function GenerationPreviewContent() {
                   className={cn(
                     'h-1.5 rounded-full transition-all duration-500',
                     idx < outlineStepIndex
-                      ? 'w-1.5 bg-blue-500/30'
+                      ? 'w-1.5 bg-[rgba(255,197,90,0.28)]'
                       : idx === outlineStepIndex
-                        ? 'w-8 bg-blue-500'
-                        : 'w-1.5 bg-muted/50',
+                        ? 'w-8 bg-[#ffc55a]'
+                        : 'w-1.5 bg-[rgba(255,255,255,0.12)]',
                   )}
                 />
               ))}
             </div>
 
             <div className="max-w-2xl space-y-2 text-center mx-auto">
-              <h2 className="text-2xl font-bold tracking-tight">
+              <h2 className="text-2xl font-bold tracking-tight" style={{ color: '#fff4dc' }}>
                 {t('generation.reviewOutlineTitle')}
               </h2>
-              <p className="text-muted-foreground text-sm md:text-base">
+              <p className="text-sm md:text-base" style={{ color: 'rgba(198,208,223,0.65)' }}>
                 {isOutlineStreaming
                   ? t('generation.reviewOutlineStreamingDesc')
                   : t('generation.reviewOutlineDesc')}
@@ -1217,7 +1233,7 @@ function GenerationPreviewContent() {
             </div>
 
             {error && (
-              <div className="mx-auto max-w-2xl rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
+              <div className="s-error mx-auto max-w-2xl px-4 py-3 text-sm">
                 {error}
               </div>
             )}
@@ -1240,18 +1256,9 @@ function GenerationPreviewContent() {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden text-center">
-      {/* Background Decor */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '4s' }}
-        />
-        <div
-          className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '6s' }}
-        />
-      </div>
+    <div className="student-page min-h-[100dvh] w-full flex flex-col items-center justify-center p-4 relative overflow-hidden text-center">
+      <div className="student-glow student-glow-top" />
+      <div className="student-glow student-glow-bottom" />
 
       {/* Back button */}
       <motion.div
@@ -1259,7 +1266,12 @@ function GenerationPreviewContent() {
         animate={{ opacity: 1, y: 0 }}
         className="absolute top-4 left-4 z-20"
       >
-        <Button variant="ghost" size="sm" onClick={goBackToHome}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={goBackToHome}
+          style={{ color: 'rgba(198,208,223,0.7)', border: '1px solid rgba(255,197,90,0.25)', borderRadius: '999px' }}
+        >
           <ArrowLeft className="size-4 mr-2" />
           {t('generation.backToHome')}
         </Button>
@@ -1272,7 +1284,7 @@ function GenerationPreviewContent() {
           transition={{ duration: 0.5 }}
           className="w-full"
         >
-          <Card className="relative overflow-hidden border-muted/40 shadow-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl min-h-[400px] flex flex-col items-center justify-center p-8 md:p-12">
+          <Card className="s-card relative overflow-hidden shadow-2xl min-h-[400px] flex flex-col items-center justify-center p-8 md:p-12">
             {/* Progress Dots */}
             <div className="absolute top-6 left-0 right-0 flex justify-center gap-2">
               {activeSteps.map((step, idx) => (
@@ -1281,10 +1293,10 @@ function GenerationPreviewContent() {
                   className={cn(
                     'h-1.5 rounded-full transition-all duration-500',
                     idx < currentStepIndex
-                      ? 'w-1.5 bg-blue-500/30'
+                      ? 'w-1.5 bg-[rgba(255,197,90,0.28)]'
                       : idx === currentStepIndex
-                        ? 'w-8 bg-blue-500'
-                        : 'w-1.5 bg-muted/50',
+                        ? 'w-8 bg-[#ffc55a]'
+                        : 'w-1.5 bg-[rgba(255,255,255,0.12)]',
                   )}
                 />
               ))}
@@ -1309,9 +1321,10 @@ function GenerationPreviewContent() {
                       key="complete"
                       initial={{ scale: 0.5, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      className="size-32 rounded-full bg-green-500/10 flex items-center justify-center border-2 border-green-500/20"
+                      className="size-32 rounded-full flex items-center justify-center border-2"
+                      style={{ background: 'rgba(255,197,90,0.1)', borderColor: 'rgba(255,197,90,0.3)' }}
                     >
-                      <CheckCircle2 className="size-16 text-green-500" />
+                      <CheckCircle2 className="size-16" style={{ color: '#ffc55a' }} />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -1345,14 +1358,14 @@ function GenerationPreviewContent() {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-2"
                   >
-                    <h2 className="text-2xl font-bold tracking-tight">
+                    <h2 className="text-2xl font-bold tracking-tight" style={{ color: '#fff4dc' }}>
                       {error
                         ? t('generation.generationFailed')
                         : isComplete
                           ? t('generation.generationComplete')
                           : t(activeStepText.title, activeStepText.titleValues)}
                     </h2>
-                    <p className="text-muted-foreground text-base">
+                    <p className="text-base" style={{ color: 'rgba(198,208,223,0.65)' }}>
                       {error
                         ? error
                         : isComplete
@@ -1432,7 +1445,18 @@ function GenerationPreviewContent() {
                 animate={{ opacity: 1, y: 0 }}
                 className="w-full max-w-xs"
               >
-                <Button size="lg" variant="outline" className="w-full h-12" onClick={goBackToHome}>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full h-12"
+                  style={{
+                    background: 'rgba(5,7,17,0.82)',
+                    border: '1px solid rgba(255,197,90,0.55)',
+                    color: '#ffc55a',
+                    borderRadius: '8px',
+                  }}
+                  onClick={goBackToHome}
+                >
                   {t('generation.goBackAndRetry')}
                 </Button>
               </motion.div>
@@ -1440,14 +1464,16 @@ function GenerationPreviewContent() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center gap-3 text-sm text-muted-foreground/50 font-medium uppercase tracking-widest"
+                className="flex items-center gap-3 text-sm font-medium uppercase tracking-widest"
+                style={{ color: 'rgba(198,208,223,0.45)' }}
               >
-                <Sparkles className="size-3 animate-pulse" />
+                <Sparkles className="size-3 animate-pulse" style={{ color: 'rgba(255,197,90,0.6)' }} />
                 {t('generation.aiWorking')}
                 {generatedAgents.length > 0 && !showAgentReveal && (
                   <button
                     onClick={() => setShowAgentReveal(true)}
-                    className="ml-2 flex items-center gap-1.5 rounded-full border border-purple-300/30 bg-purple-500/10 px-3 py-1 text-xs font-medium normal-case tracking-normal text-purple-400 transition-colors hover:bg-purple-500/20 hover:text-purple-300"
+                    className="ml-2 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium normal-case tracking-normal transition-colors"
+                    style={{ border: '1px solid rgba(255,197,90,0.3)', background: 'rgba(255,197,90,0.08)', color: 'rgba(255,197,90,0.8)' }}
                   >
                     <Bot className="size-3" />
                     {t('generation.viewAgents')}
@@ -1477,10 +1503,10 @@ export default function GenerationPreviewPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center">
+        <div className="student-page min-h-[100dvh] w-full flex items-center justify-center">
           <div className="animate-pulse space-y-4 text-center">
-            <div className="h-8 w-48 bg-muted rounded mx-auto" />
-            <div className="h-4 w-64 bg-muted rounded mx-auto" />
+            <div className="h-8 w-48 rounded mx-auto" style={{ background: 'rgba(255,197,90,0.15)' }} />
+            <div className="h-4 w-64 rounded mx-auto" style={{ background: 'rgba(255,197,90,0.1)' }} />
           </div>
         </div>
       }

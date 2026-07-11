@@ -1,0 +1,158 @@
+/* ── 星燧计划 · 二级界面（/student）主题样式 ── */
+
+.student-page {
+  --ink:   #fff4dc;
+  --muted: #c6d0df;
+  --gold:  #ffc55a;
+  --panel: rgba(8, 13, 26, 0.76);
+  --line:  rgba(255, 197, 90, 0.22);
+
+  min-height: 100dvh;
+  background:
+    radial-gradient(ellipse at 18% 32%, rgba(90, 50, 180, 0.75) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 12%, rgba(20, 70, 160, 0.65) 0%, transparent 42%),
+    radial-gradient(ellipse at 58% 80%, rgba(140, 30, 90, 0.55) 0%, transparent 38%),
+    radial-gradient(ellipse at 90% 65%, rgba(50, 20, 120, 0.6)  0%, transparent 36%),
+    #050711;
+  color: var(--ink);
+  font-family: "华文中宋", "STZhongsong", "STSong", "SimSun", serif;
+}
+
+/* ── 标题字：方正小标宋 加粗 ── */
+.student-page h1,
+.student-page h2,
+.student-page .s-title {
+  font-family: "方正小标宋简体", "FZXiaoBiaoSong-B05S", "STSong", "Songti SC", serif;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ── 口号 slogan ── */
+.student-page .s-slogan {
+  color: var(--muted);
+  font-family: "华文中宋", "STZhongsong", "STSong", serif;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+}
+
+/* ── 背景金色辉光装饰 ── */
+.student-glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(90px);
+}
+.student-glow-top {
+  top: -8%;
+  left: 28%;
+  width: 540px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(255, 197, 90, 0.07), transparent 70%);
+}
+.student-glow-bottom {
+  bottom: 4%;
+  right: 18%;
+  width: 420px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(255, 120, 50, 0.05), transparent 70%);
+}
+
+/* ── 主输入卡片 ── */
+.student-page .s-card {
+  background: rgba(8, 13, 26, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+  transition: box-shadow 0.25s ease;
+}
+.student-page .s-card:focus-within {
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.44), 0 0 0 1px rgba(255, 197, 90, 0.35);
+}
+
+/* ── Textarea ── */
+.student-page .s-textarea {
+  background: transparent !important;
+  color: var(--ink) !important;
+  caret-color: var(--gold);
+  font-family: "华文中宋", "STZhongsong", "STSong", serif;
+  font-size: 14px;
+  line-height: 1.85;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.student-page .s-textarea::placeholder {
+  color: rgba(198, 208, 223, 0.38);
+}
+
+/* ── 发送按钮 ── */
+.student-page .s-btn-send {
+  background: linear-gradient(135deg, var(--gold), #ff8c46) !important;
+  color: #171008 !important;
+  font-family: "方正小标宋简体", "FZXiaoBiaoSong-B05S", "STSong", serif;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+}
+.student-page .s-btn-send:disabled {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: rgba(198, 208, 223, 0.28) !important;
+  cursor: not-allowed;
+}
+.student-page .s-btn-send:not(:disabled):hover {
+  opacity: 0.88;
+  box-shadow: 0 0 20px rgba(255, 197, 90, 0.35);
+}
+
+/* ── Ghost 按钮（工具栏等） ── */
+.student-page .s-btn-ghost {
+  border: 1px solid var(--line) !important;
+  color: var(--muted) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 999px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.student-page .s-btn-ghost:hover {
+  border-color: rgba(255, 197, 90, 0.55) !important;
+  color: var(--ink) !important;
+}
+
+/* ── 分隔线区域（历史课堂） ── */
+.student-page .s-divider {
+  color: var(--muted);
+}
+.student-page .s-divider-line {
+  background: rgba(255, 197, 90, 0.14);
+}
+
+/* ── 历史课堂缩略图背景 ── */
+.student-page .s-thumb-bg {
+  background: rgba(8, 13, 26, 0.85) !important;
+  border: 1px solid rgba(255, 197, 90, 0.14);
+}
+
+/* ── 金色标签文字 ── */
+.student-page .s-gold {
+  color: var(--gold);
+}
+
+/* ── 错误提示 ── */
+.student-page .s-error {
+  background: rgba(255, 60, 60, 0.08);
+  border: 1px solid rgba(255, 60, 60, 0.2);
+  color: #ff8080;
+  border-radius: 8px;
+}
+
+/* ── interactive mode 按钮（去 cyan，改金色系） ── */
+.student-page .s-btn-interactive {
+  border-color: rgba(255, 197, 90, 0.45) !important;
+  color: rgba(255, 197, 90, 0.8) !important;
+}
+.student-page .s-btn-interactive.is-active {
+  background: rgba(255, 197, 90, 0.1) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  box-shadow: 0 0 12px rgba(255, 197, 90, 0.25);
+}
