@@ -2,21 +2,11 @@
 
 import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type Locale, defaultLocale, supportedLocales } from '@/lib/i18n';
+import { type Locale } from '@/lib/i18n';
 import '@/lib/i18n/config';
 
 const LOCALE_STORAGE_KEY = 'locale';
-
-/** Match a browser language code (e.g. 'en', 'zh-TW') to a supported locale */
-function resolveLocale(lang: string): Locale {
-  // Exact match
-  const exact = supportedLocales.find((l) => l.code === lang);
-  if (exact) return exact.code;
-  // Prefix match: 'en' → 'en-US', 'zh' → 'zh-CN'
-  const prefix = lang.split('-')[0].toLowerCase();
-  const match = supportedLocales.find((l) => l.code.toLowerCase().startsWith(prefix));
-  return match?.code ?? defaultLocale;
-}
+const PRODUCT_LOCALE: Locale = 'zh-CN';
 
 type I18nContextType = {
   locale: Locale;
@@ -29,26 +19,22 @@ const I18nContext = createContext<I18nContextType | undefined>(undefined);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const { t, i18n } = useTranslation();
 
-  const locale = (i18n.language || defaultLocale) as Locale;
+  const locale = PRODUCT_LOCALE;
 
-  // Detect language after hydration to avoid SSR mismatch.
-  // i18next handles fallback automatically: if the detected language
-  // has no matching JSON file, it falls back to fallbackLng.
+  // This student-only product intentionally exposes one language.
   useEffect(() => {
+    if (i18n.language !== PRODUCT_LOCALE) void i18n.changeLanguage(PRODUCT_LOCALE);
     try {
-      const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
-      const raw = stored || navigator.language || defaultLocale;
-      const target = resolveLocale(raw);
-      if (target !== i18n.language) i18n.changeLanguage(target);
+      localStorage.setItem(LOCALE_STORAGE_KEY, PRODUCT_LOCALE);
     } catch {
-      // localStorage unavailable, keep default
+      // localStorage unavailable; in-memory locale is still Chinese.
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setLocale = (newLocale: Locale) => {
-    i18n.changeLanguage(newLocale);
+  const setLocale = (_newLocale: Locale) => {
+    void i18n.changeLanguage(PRODUCT_LOCALE);
     try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, newLocale);
+      localStorage.setItem(LOCALE_STORAGE_KEY, PRODUCT_LOCALE);
     } catch {
       // localStorage unavailable
     }

@@ -1,5 +1,5 @@
-import { ParentComingSoon } from '@/components/parent/coming-soon';
+import { redirect } from 'next/navigation';
 
 export default function ParentPage() {
-  return <ParentComingSoon />;
+  redirect('/student');
 }

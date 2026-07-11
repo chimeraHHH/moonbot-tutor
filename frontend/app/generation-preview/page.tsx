@@ -788,10 +788,12 @@ function GenerationPreviewContent() {
         } catch (err: unknown) {
           log.warn('[Generation] Agent generation failed, falling back to presets:', err);
           const registry = useAgentRegistry.getState();
-          const fallbackIds = settings.selectedAgentIds.filter((id) => {
-            const a = registry.getAgent(id);
-            return a && !a.isGenerated;
-          });
+          const fallbackIds = settings.selectedAgentIds
+            .filter((id) => {
+              const a = registry.getAgent(id);
+              return a && !a.isGenerated && a.role === 'teacher';
+            })
+            .slice(0, 1);
           agents = fallbackIds
             .map((id) => registry.getAgent(id))
             .filter(Boolean)
@@ -804,13 +806,15 @@ function GenerationPreviewContent() {
           stage.agentIds = fallbackIds;
         }
       } else {
-        // Preset mode — use selected agents (include persona)
+        // Preset mode — keep only one teacher.
         // Filter out stale generated agent IDs that may linger in settings
         const registry = useAgentRegistry.getState();
-        const presetAgentIds = settings.selectedAgentIds.filter((id) => {
-          const a = registry.getAgent(id);
-          return a && !a.isGenerated;
-        });
+        const presetAgentIds = settings.selectedAgentIds
+          .filter((id) => {
+            const a = registry.getAgent(id);
+            return a && !a.isGenerated && a.role === 'teacher';
+          })
+          .slice(0, 1);
         agents = presetAgentIds
           .map((id) => registry.getAgent(id))
           .filter(Boolean)

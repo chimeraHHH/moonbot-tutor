@@ -1,7 +1,7 @@
 /**
  * Agent Profiles Generation API
  *
- * Generates agent profiles (teacher, assistant, student) for a course stage
+ * Generates the teacher profile for a course stage
  * based on stage info and scene outlines.
  */
 
@@ -13,6 +13,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { AGENT_COLOR_PALETTE } from '@/lib/constants/agent-defaults';
 import { normalizeVoiceDesign } from '@/lib/audio/voice-design';
+import { normalizeSingleTeacherAgents } from '@/lib/orchestration/single-teacher-agents';
 
 const log = createLogger('Agent Profiles API');
 
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
           .join('\n')
       : null;
 
-    const systemPrompt = `You are an expert instructional designer. Generate agent profiles for a multi-agent classroom simulation. Decide the appropriate number of agents (typically 3-5) based on the course content and complexity. Return ONLY valid JSON, no markdown or explanation.`;
+    const systemPrompt = `You are an expert instructional designer. Generate exactly one teacher profile for a classroom course. Return ONLY valid JSON, no markdown or explanation.`;
 
     // Build voice list for prompt (if available)
     const voiceListStr =
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
         : '';
 
     const voicePrompt = voiceListStr
-      ? `- Each agent should be assigned a voice that matches their persona from this list: ${voiceListStr}
+      ? `- The teacher should be assigned a voice that matches their persona from this list: ${voiceListStr}
   - Prefer a voice whose language matches the course language directive
   - Pick a voice that suits the agent's personality and role (e.g. authoritative voice for teacher, lively voice for energetic student)
   - Try to use different voices for each agent`
@@ -117,10 +118,9 @@ Course name: ${stageInfo.name}
 ${stageInfo.description ? `Course description: ${stageInfo.description}` : ''}
 ${sceneSummary ? `\nScene outlines:\n${sceneSummary}\n` : ''}
 Requirements:
-- Decide the appropriate number of agents based on the course content (typically 3-5)
-- Exactly 1 agent must have role "teacher", the rest can be "assistant" or "student"
-- Priority values: teacher=10 (highest), assistant=7, student=4-6
-- Each agent needs: name, role, persona (2-3 sentences describing personality and teaching/learning style)
+- Return exactly 1 agent with role "teacher"; do not return assistant or student agents
+- The teacher priority must be 10
+- The teacher needs: name, role, persona (2-3 sentences describing personality and teaching style)
 - Language directive for this course: ${languageDirective}
   Agent names and personas must follow this language directive.
 - Each agent must be assigned one avatar from this list: ${JSON.stringify(avatarDescriptions && avatarDescriptions.length > 0 ? avatarDescriptions.map((a) => ({ path: a.path, description: a.desc })) : availableAvatars)}
@@ -140,12 +140,12 @@ Return a JSON object with this exact structure:
   "agents": [
     {
       "name": "string",
-      "role": "teacher" | "assistant" | "student",
+      "role": "teacher",
       "persona": "string (2-3 sentences)",
       "voiceDesign": { "identity": "string", "texture": "string", "delivery": "string" },
       "avatar": "string (from available list)",
       "color": "string (hex color from palette)",
-      "priority": number (10 for teacher, 7 for assistant, 4-6 for student)${voiceJsonField}
+      "priority": 10${voiceJsonField}
     }
   ]
 }`;
@@ -188,27 +188,19 @@ Return a JSON object with this exact structure:
     }
 
     // ── Validate parsed structure ──
-    if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length < 2) {
-      log.error(`Expected at least 2 agents, got ${parsed.agents?.length ?? 0}`);
+    if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length === 0) {
+      log.error(`Expected at least one teacher, got ${parsed.agents?.length ?? 0}`);
       return apiError(
         'GENERATION_FAILED',
         500,
-        `Expected at least 2 agents but LLM returned ${parsed.agents?.length ?? 0}`,
+        'The model did not return a teacher profile',
       );
     }
 
-    const teacherCount = parsed.agents.filter((a) => a.role === 'teacher').length;
-    if (teacherCount !== 1) {
-      log.error(`Expected exactly 1 teacher, got ${teacherCount}`);
-      return apiError(
-        'GENERATION_FAILED',
-        500,
-        `Expected exactly 1 teacher but LLM returned ${teacherCount}`,
-      );
-    }
+    const normalizedAgents = normalizeSingleTeacherAgents(parsed.agents);
 
     // ── Build output with IDs ──
-    const agents = parsed.agents.map((agent, index) => {
+    const agents = normalizedAgents.map((agent, index) => {
       // Parse voice "providerId::voiceId" format
       let voiceConfig: { providerId: string; voiceId: string } | undefined;
       if (agent.voice && agent.voice.includes('::')) {
@@ -227,8 +219,7 @@ Return a JSON object with this exact structure:
         persona: agent.persona,
         avatar: agent.avatar || availableAvatars[index % availableAvatars.length],
         color: agent.color || AGENT_COLOR_PALETTE[index % AGENT_COLOR_PALETTE.length],
-        priority:
-          agent.priority ?? (agent.role === 'teacher' ? 10 : agent.role === 'assistant' ? 7 : 5),
+        priority: 10,
         ...(voiceConfig ? { voiceConfig } : {}),
         ...(voiceDesign ? { voiceDesign } : {}),
       };

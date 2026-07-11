@@ -30,14 +30,14 @@ function RegisterForm() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Registration failed');
+        throw new Error(data.error || '注册失败');
       }
 
       const next = searchParams.get('next');
       router.replace(next && next.startsWith('/') ? next : '/student');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(err instanceof Error ? err.message : '注册失败');
     } finally {
       setSubmitting(false);
     }
@@ -51,15 +51,15 @@ function RegisterForm() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
               S
             </div>
-            SophosEdu
+            星燧计划
           </div>
           <div className="max-w-xl pb-12">
-            <p className="text-sm font-medium text-muted-foreground">AI interactive classroom</p>
+            <p className="text-sm font-medium text-muted-foreground">AI 沉浸式学生课堂</p>
             <h1 className="mt-4 text-5xl font-semibold tracking-normal">
-              Create your learning workspace account.
+              创建你的学生学习空间
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
-              Student accounts can start from the classroom workspace immediately.
+              注册后即可生成可视化课程，并由一位教师全程引导学习。
             </p>
           </div>
         </section>
@@ -70,19 +70,19 @@ function RegisterForm() {
               <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
                 S
               </div>
-              <span className="font-medium">SophosEdu</span>
+              <span className="font-medium">星燧计划</span>
             </div>
             <div className="mb-8">
               <div className="mb-4 flex size-10 items-center justify-center rounded-lg border border-border">
                 <UserPlus className="size-5" />
               </div>
-              <h2 className="text-2xl font-semibold tracking-normal">Create account</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Start with a student account.</p>
+              <h2 className="text-2xl font-semibold tracking-normal">注册学生账号</h2>
+              <p className="mt-2 text-sm text-muted-foreground">开启你的星燧学习旅程。</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <Label htmlFor="displayName">Name</Label>
+                <Label htmlFor="displayName">姓名</Label>
                 <Input
                   id="displayName"
                   autoComplete="name"
@@ -92,7 +92,7 @@ function RegisterForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">邮箱</Label>
                 <Input
                   id="email"
                   type="email"
@@ -103,7 +103,7 @@ function RegisterForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">密码</Label>
                 <Input
                   id="password"
                   type="password"
@@ -121,16 +121,16 @@ function RegisterForm() {
               )}
               <Button type="submit" className="w-full gap-2" disabled={submitting}>
                 <UserPlus className="size-4" />
-                {submitting ? 'Creating account' : 'Create account'}
+                {submitting ? '正在注册' : '创建账号'}
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              Already have an account?{' '}
+              已有账号？{' '}
               <Link
                 className="font-medium text-foreground underline-offset-4 hover:underline"
                 href="/login"
               >
-                Sign in
+                去登录
               </Link>
             </p>
           </div>
@@ -145,7 +145,7 @@ export default function RegisterPage() {
     <Suspense
       fallback={
         <main className="flex min-h-[100dvh] items-center justify-center bg-background text-sm text-muted-foreground">
-          Loading
+          加载中
         </main>
       }
     >

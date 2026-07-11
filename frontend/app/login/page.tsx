@@ -29,14 +29,14 @@ function LoginForm() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || '登录失败');
       }
 
       const next = searchParams.get('next');
       router.replace(next && next.startsWith('/') ? next : '/student');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : '登录失败');
     } finally {
       setSubmitting(false);
     }
@@ -50,15 +50,15 @@ function LoginForm() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
               S
             </div>
-            SophosEdu
+            星燧计划
           </div>
           <div className="max-w-xl pb-12">
-            <p className="text-sm font-medium text-muted-foreground">AI interactive classroom</p>
+            <p className="text-sm font-medium text-muted-foreground">AI 沉浸式学生课堂</p>
             <h1 className="mt-4 text-5xl font-semibold tracking-normal">
-              Sign in to manage learning workspaces.
+              登录你的学习空间
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
-              Role-based access keeps student, teacher, parent, and admin workflows separated.
+              在一个教师的引导下，生成并探索属于你的可视化课程。
             </p>
           </div>
         </section>
@@ -69,19 +69,19 @@ function LoginForm() {
               <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
                 S
               </div>
-              <span className="font-medium">SophosEdu</span>
+              <span className="font-medium">星燧计划</span>
             </div>
             <div className="mb-8">
               <div className="mb-4 flex size-10 items-center justify-center rounded-lg border border-border">
                 <LockKeyhole className="size-5" />
               </div>
-              <h2 className="text-2xl font-semibold tracking-normal">Sign in</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use your SophosEdu account.</p>
+              <h2 className="text-2xl font-semibold tracking-normal">登录</h2>
+              <p className="mt-2 text-sm text-muted-foreground">使用你的星燧学生账号。</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">邮箱</Label>
                 <Input
                   id="email"
                   type="email"
@@ -92,7 +92,7 @@ function LoginForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">密码</Label>
                 <Input
                   id="password"
                   type="password"
@@ -109,16 +109,16 @@ function LoginForm() {
               )}
               <Button type="submit" className="w-full gap-2" disabled={submitting}>
                 <LogIn className="size-4" />
-                {submitting ? 'Signing in' : 'Sign in'}
+                {submitting ? '正在登录' : '登录'}
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              No account?{' '}
+              还没有账号？{' '}
               <Link
                 className="font-medium text-foreground underline-offset-4 hover:underline"
                 href="/register"
               >
-                Create one
+                立即注册
               </Link>
             </p>
           </div>
@@ -133,7 +133,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="flex min-h-[100dvh] items-center justify-center bg-background text-sm text-muted-foreground">
-          Loading
+          加载中
         </main>
       }
     >

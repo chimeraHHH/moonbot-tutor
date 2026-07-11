@@ -1,0 +1,74 @@
+.landing-page {
+  --ink: #fff4dc; --muted: #c6d0df; --gold: #ffc55a; --landing-scroll: 0;
+  font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  overflow-x: hidden; scroll-snap-type: y proximity;
+}
+.landing-page * { box-sizing: border-box; }
+.landing-page section { position: relative; min-height: 100vh; scroll-snap-align: start; overflow: hidden; }
+.landing-page h1,.landing-page h2,.landing-page p { margin-top: 0; }
+.landing-reveal { opacity: 0; transform: translateY(38px); transition: opacity .85s ease, transform .85s cubic-bezier(.22,1,.36,1); }
+.landing-reveal.is-visible { opacity: 1; transform: translateY(0); }
+.zhixiang-view { display:grid; place-items:center; padding:42px 24px; background:linear-gradient(180deg,rgba(3,5,12,.45),rgba(3,5,12,.65)),url('/landing/134background.png') center/cover no-repeat; }
+.zhixiang-center { display:flex; flex-direction:column; align-items:center; gap:20px; }
+@keyframes landing-up { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:none} }
+.zhixiang-title { margin:0 0 16px; font-family:"STSong","Songti SC",serif; font-weight:700; font-size:clamp(58px,8vw,100px); color:var(--gold); letter-spacing:.38em; line-height:1.1; text-align:center; animation:landing-up .9s ease both; }
+.zhixiang-sub { margin:0 auto; font-family:"STSong","Songti SC",serif; font-size:clamp(30px,4vw,50px); font-weight:400; color:var(--ink); text-shadow:0 6px 28px #0007; text-align:center; animation:landing-up .9s .35s ease both; }
+.enter-btn,.direct-entry { padding:12px 36px; border:1.5px solid var(--gold); border-radius:999px; background:#0004; color:var(--gold); font-family:"STSong","Songti SC",serif; font-size:16px; letter-spacing:.12em; cursor:pointer; transition:.22s ease; }
+.enter-btn { margin-top:8px; animation:landing-up .9s .7s ease both; }
+.enter-btn:hover,.direct-entry:hover { background:#0008; border-color:#ffd980; color:#ffd980; box-shadow:0 0 28px #ffc55a42; }
+.scroll-cue { position:absolute; left:50%; bottom:28px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:8px; border:0; background:transparent; color:#fff9; font-size:12px; letter-spacing:.18em; cursor:pointer; }
+.scroll-cue i { width:1px; height:34px; background:linear-gradient(var(--gold),transparent); animation:scroll-pulse 1.6s ease-in-out infinite; }
+@keyframes scroll-pulse { 0%,100%{transform:scaleY(.45);transform-origin:top;opacity:.4} 50%{transform:scaleY(1);opacity:1} }
+.home-view { background:linear-gradient(180deg,rgba(3,5,12,.1),rgba(3,5,12,.35)),url('/landing/background.png') center/cover no-repeat; }
+.home-view::before { content:""; position:absolute; inset:0 0 auto; height:55%; background:linear-gradient(180deg,rgba(3,5,12,.78),transparent); z-index:1; pointer-events:none; }
+.home-view::after { content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 52%,transparent 0 34%,rgba(2,4,11,.22) 68%,rgba(2,4,11,.5)); pointer-events:none; }
+.home-header { position:relative; z-index:4; width:min(1180px,calc(100% - 44px)); margin:auto; padding-top:34px; }
+.header-text-box { display:inline-block; padding:14px 24px 20px; }
+.brand-title { margin:0; font-family:"STSong","Songti SC",serif; font-size:50px; font-weight:700; color:var(--ink); }
+.orbit-field { position:absolute; z-index:2; left:50%; top:50%; width:1628px; height:927px; transform:translate(-50%,calc(-50% + (var(--landing-scroll) * .018px))); transition:transform .1s linear; }
+.celestial { position:absolute; display:grid; place-items:center; border:0; border-radius:50%; background:transparent; cursor:pointer; transform:translate(-50%,-50%); transition:transform .22s ease,filter .22s ease; }
+.celestial.active { transform:translate(-50%,-50%) scale(1.06); filter:drop-shadow(0 0 16px #ffcd7850); }
+.celestial:hover { transform:translate(-50%,-50%) scale(1.14); filter:saturate(1.25) drop-shadow(0 0 44px #ffcd78b8); }
+.celestial img { display:block; width:100%; height:100%; object-fit:contain; pointer-events:none; }
+.celestial span,.yinghe-corner span,.aerospace-moon span,.aerospace-rocket span { position:absolute; left:50%; bottom:-32px; transform:translateX(-50%); padding:5px 16px; border-radius:999px; background:#fff; color:#111; font-family:"STSong","Songti SC",serif; font-size:14px; font-weight:700; white-space:nowrap; opacity:0; transition:opacity .2s ease; }
+.celestial:hover span,.yinghe-corner:hover span,.aerospace-moon:hover span,.aerospace-rocket:hover span { opacity:1; }
+.sun-node { left:814px; top:454px; width:430px; height:387px; }
+.earth-system { position:absolute; left:1090px; top:612px; width:260px; height:240px; transform:translate(-50%,-50%); }
+.earth-system::before { content:""; position:absolute; left:130px; top:120px; width:280px; height:160px; border:1px solid #c8e1ff47; border-radius:50%; transform:translate(-50%,-50%); }
+.earth-node { left:130px; top:120px; width:158px; height:147px; pointer-events:none; }
+.moon-node { left:229px; top:63px; width:74px; height:68px; }
+.mars-node { left:407px; top:491px; width:90px; height:90px; }
+.yinghe-corner { position:absolute; top:0; right:0; z-index:5; width:clamp(300px,38vw,560px); transition:.24s ease; }
+.yinghe-corner img,.aerospace-moon img,.aerospace-rocket img { display:block; width:100%; height:auto; }
+.yinghe-corner:hover { transform:scale(1.05); filter:drop-shadow(0 0 28px #a0c8ff99); }
+.yinghe-corner span { bottom:18px; }
+.aerospace-view { display:grid; place-items:center; padding:52px 24px; background:linear-gradient(180deg,rgba(3,5,12,.64),rgba(3,5,12,.88)); }
+.aerospace-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.72; }
+.aerospace-moon,.aerospace-rocket { position:absolute; z-index:2; transition:.22s ease; }
+.aerospace-moon { top:0; right:0; width:clamp(200px,26vw,380px); }
+.aerospace-rocket { left:calc(50% - 220px); top:50%; transform:translateY(-50%); width:clamp(360px,44vw,680px); }
+.aerospace-moon:hover { transform:scale(1.05); filter:drop-shadow(0 0 26px #b4d2ffa6); }
+.aerospace-rocket:hover { transform:translateY(-50%) scale(1.05); filter:drop-shadow(0 0 26px #ffa050a6); }
+.aerospace-moon span,.aerospace-rocket span { bottom:14px; }
+.aerospace-header { position:absolute; top:clamp(28px,5vh,60px); left:clamp(24px,5vw,72px); z-index:3; max-width:860px; }
+.aerospace-header h1,.pricing-header h1 { font-family:"STSong","Songti SC",serif; }
+.aerospace-header h1 { font-size:40px; line-height:1.08; margin-bottom:14px; text-shadow:0 6px 28px #0007; }
+.aerospace-copy { max-width:400px; color:var(--muted); font-size:15px; line-height:1.85; }
+.pricing-view { display:grid; place-items:center; padding:52px 24px; background:linear-gradient(#03050c99,#03050ce8),url('/landing/134background.png') center/cover fixed; }
+.pricing-inner { position:relative; z-index:1; width:min(1100px,100%); }
+.pricing-header { text-align:center; margin-bottom:48px; }
+.pricing-header h1 { font-size:clamp(28px,3.5vw,48px); }
+.eyebrow { margin:0 0 8px; color:var(--gold); font-size:13px; }
+.pricing-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+.pricing-card { min-height:380px; padding:40px 32px; border:1px solid var(--gold); border-radius:16px; background:#0004; display:flex; flex-direction:column; align-items:center; gap:12px; transition:transform .25s ease,box-shadow .25s ease; }
+.pricing-card:hover { transform:translateY(-8px); box-shadow:0 24px 60px #0008,0 0 28px #ffc55a22; }
+.plan-name { margin:0; font:700 clamp(22px,2.4vw,32px)/1 "STSong","Songti SC",serif; color:var(--gold); }
+.plan-price { margin:0; font-size:clamp(36px,4.5vw,60px); font-weight:700; }
+.plan-sub { margin:0 0 16px; color:var(--muted); font-family:"STSong","Songti SC",serif; font-weight:700; }
+.plan-features { list-style:none; margin:0; padding:16px 0 0; width:100%; border-top:1px solid #ffc55a33; display:flex; flex-direction:column; gap:10px; }
+.plan-features li { color:var(--muted); font-family:"STSong","Songti SC",serif; line-height:1.5; }
+.plan-features li::before { content:"□ "; }
+.direct-entry { display:inline-flex; text-decoration:none; }
+@media(max-width:900px){.orbit-field{transform:translate(-50%,-50%) scale(.72)}.pricing-grid{grid-template-columns:1fr}.pricing-card{min-height:0}.aerospace-header{max-width:55%}.aerospace-header h1{font-size:30px}}
+@media(max-width:640px){.zhixiang-title{letter-spacing:.18em}.home-header{width:calc(100% - 28px)}.brand-title{font-size:36px}.orbit-field{transform:translate(-50%,-50%) scale(.48)}.yinghe-corner{width:260px}.aerospace-header{max-width:80%;top:28px}.aerospace-header h1{font-size:25px}.aerospace-copy{font-size:13px}.aerospace-rocket{left:24%;width:480px}.pricing-view{padding:44px 18px}}
+@media(prefers-reduced-motion:reduce){.landing-page{scroll-behavior:auto}.landing-page *{animation:none!important;transition-duration:.01ms!important}.landing-reveal{opacity:1;transform:none}.orbit-field{transform:translate(-50%,-50%)}}

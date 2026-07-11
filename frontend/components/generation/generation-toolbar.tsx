@@ -35,7 +35,6 @@ import {
   supportsConfigurableThinking,
 } from '@/lib/ai/thinking-config';
 import type { SettingsSection } from '@/lib/types/settings';
-import { MediaPopover } from '@/components/generation/media-popover';
 import { COURSE_MATERIAL_ACCEPT, isSupportedCourseMaterial } from '@/lib/document/mime';
 
 // ─── Constants ───────────────────────────────────────────────
@@ -46,7 +45,6 @@ const MAX_COURSE_MATERIAL_SIZE_BYTES = MAX_COURSE_MATERIAL_SIZE_MB * 1024 * 1024
 export interface GenerationToolbarProps {
   webSearch: boolean;
   onWebSearchChange: (v: boolean) => void;
-  onSettingsOpen: (section?: SettingsSection) => void;
   // PDF
   pdfFile: File | null;
   onPdfFileChange: (file: File | null) => void;
@@ -57,7 +55,6 @@ export interface GenerationToolbarProps {
 export function GenerationToolbar({
   webSearch,
   onWebSearchChange,
-  onSettingsOpen,
   pdfFile,
   onPdfFileChange,
   onPdfError,
@@ -135,44 +132,7 @@ export function GenerationToolbar({
 
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {/* ── Model selector ── */}
-      {configuredProviders.length > 0 ? (
-        <ModelSettingsPopover
-          configuredProviders={configuredProviders}
-          currentProviderId={currentProviderId}
-          currentModelId={currentModelId}
-          currentProviderConfig={currentProviderConfig}
-          currentModel={currentModel}
-          setModel={setModel}
-          thinkingConfig={currentThinkingConfig}
-          onThinkingChange={(config) =>
-            setThinkingConfig(currentProviderId, currentModelId, config)
-          }
-          t={t}
-        />
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => onSettingsOpen('providers')}
-              className={cn(
-                pillCls,
-                'text-amber-600 dark:text-amber-400 animate-pulse',
-                'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50',
-              )}
-            >
-              <Bot className="size-3.5" />
-              <span>{t('toolbar.configureProvider')}</span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{t('toolbar.configureProviderHint')}</TooltipContent>
-        </Tooltip>
-      )}
-
       <div className="flex min-w-0 items-center gap-1">
-        {/* ── Separator ── */}
-        <div className="w-px h-4 bg-border/60 mx-1" />
-
         {/* ── Course material (extractor + upload) combined Popover ── */}
         <Popover>
           <PopoverTrigger asChild>
@@ -400,10 +360,6 @@ export function GenerationToolbar({
         )}
 
         {/* ── Separator ── */}
-        <div className="w-px h-4 bg-border/60 mx-1" />
-
-        {/* ── Media popover ── */}
-        <MediaPopover onSettingsOpen={onSettingsOpen} />
       </div>
     </div>
   );
