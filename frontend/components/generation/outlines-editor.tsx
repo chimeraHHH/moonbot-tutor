@@ -237,30 +237,30 @@ export function OutlinesEditor({
       initial={{ rotate: 0 }}
       animate={{ rotate: 0 }}
       className={cn(
-        'relative overflow-hidden rounded-3xl border border-border/40',
-        'bg-white/85 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.25)] backdrop-blur-xl',
-        'dark:border-white/5 dark:bg-slate-950/70 dark:shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)]',
+        'relative overflow-hidden rounded-3xl',
+        'border border-[rgba(255,197,90,0.22)]',
+        'bg-[rgba(8,13,26,0.90)] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.7)] backdrop-blur-xl',
       )}
     >
       {/* Soft gradient wash */}
-      <div className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/40 to-transparent" />
-      <div className="pointer-events-none absolute -top-32 left-1/2 h-64 w-[80%] -translate-x-1/2 rounded-full bg-blue-500/[0.04] blur-3xl dark:bg-blue-400/[0.08]" />
+      <div className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-[rgba(255,197,90,0.35)] to-transparent" />
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-64 w-[80%] -translate-x-1/2 rounded-full bg-[rgba(255,197,90,0.05)] blur-3xl" />
 
       {/* Header */}
       <div className="relative flex items-start gap-3 px-6 pt-6 pb-4 md:px-10 md:pt-8 md:pb-6">
         <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground/70">
-            <Sparkles className="size-3 text-blue-500" />
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-[rgba(198,208,223,0.6)]">
+            <Sparkles className="size-3 text-[#ffc55a]" />
             {t('generation.outlineEditorEyebrow')}
           </div>
-          <h2 className="text-2xl font-semibold tracking-tight md:text-[28px]">
+          <h2 className="text-2xl font-semibold tracking-tight md:text-[28px] text-[#fff4dc]">
             {t('generation.outlineEditorTitle')}
           </h2>
-          <p className="flex min-h-[1.5rem] items-center gap-2 text-sm text-muted-foreground">
+          <p className="flex min-h-[1.5rem] items-center gap-2 text-sm text-[rgba(198,208,223,0.65)]">
             {isStreaming && (
               <motion.span
                 aria-hidden
-                className="inline-flex size-1.5 rounded-full bg-blue-500"
+                className="inline-flex size-1.5 rounded-full bg-[#ffc55a]"
                 animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
                 transition={{ duration: 1.2, repeat: Infinity }}
               />
@@ -276,8 +276,8 @@ export function OutlinesEditor({
             aria-label={t('generation.collapseEditor')}
             className={cn(
               'mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium',
-              'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
+              'text-[rgba(198,208,223,0.6)] transition-colors hover:bg-[rgba(255,197,90,0.08)] hover:text-[#fff4dc]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,197,90,0.3)]',
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
@@ -356,10 +356,10 @@ export function OutlinesEditor({
       </div>
 
       {/* Footer */}
-      <div className="relative flex flex-col gap-3 border-t border-border/40 bg-gradient-to-t from-background/95 to-transparent px-6 py-4 md:flex-row md:items-center md:justify-between md:px-10 md:py-5">
+      <div className="relative flex flex-col gap-3 border-t border-[rgba(255,197,90,0.18)] bg-gradient-to-t from-[rgba(5,7,17,0.95)] to-transparent px-6 py-4 md:flex-row md:items-center md:justify-between md:px-10 md:py-5">
         <label
           className={cn(
-            'flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground',
+            'flex cursor-pointer items-center gap-2.5 text-sm text-[rgba(198,208,223,0.65)] transition-colors hover:text-[#fff4dc]',
             isLoading && 'cursor-not-allowed opacity-60',
           )}
         >
@@ -378,7 +378,7 @@ export function OutlinesEditor({
             variant="ghost"
             onClick={onBack}
             disabled={isLoading}
-            className="rounded-full px-4 text-muted-foreground hover:text-foreground"
+            className="rounded-full px-4 text-[rgba(198,208,223,0.65)] hover:text-[#fff4dc] hover:bg-[rgba(255,197,90,0.06)]"
           >
             {t('generation.backToRequirements')}
           </Button>
@@ -387,11 +387,11 @@ export function OutlinesEditor({
               type="button"
               onClick={scrollToFirstBlocking}
               title={t('generation.jumpToBlankTitle')}
-              className="inline-flex items-center gap-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-2.5 text-xs text-[rgba(198,208,223,0.6)] transition-colors hover:text-[#fff4dc]"
             >
-              <span className="block h-1 w-[84px] overflow-hidden rounded-full bg-muted">
+              <span className="block h-1 w-[84px] overflow-hidden rounded-full bg-[rgba(255,255,255,0.1)]">
                 <span
-                  className="block h-full rounded-full bg-muted-foreground/45 transition-[width]"
+                  className="block h-full rounded-full bg-[rgba(255,197,90,0.6)] transition-[width]"
                   style={{ width: `${totalCount > 0 ? (readyCount / totalCount) * 100 : 0}%` }}
                 />
               </span>
@@ -401,7 +401,13 @@ export function OutlinesEditor({
           <Button
             onClick={onConfirm}
             disabled={isLoading || isStreaming || outlines.length === 0 || blockingCount > 0}
-            className="rounded-full px-6 shadow-lg shadow-blue-500/20"
+            className="rounded-full px-6 shadow-lg shadow-[rgba(255,197,90,0.25)]"
+            style={{
+              background: 'linear-gradient(135deg,#ffc55a,#ff8c46)',
+              color: '#171008',
+              border: 'none',
+              fontWeight: 700,
+            }}
           >
             {isLoading ? (
               <>
@@ -527,10 +533,10 @@ function SceneRow({
       }}
       className={cn(
         'group/scene relative rounded-2xl px-3 py-3.5 transition-colors md:px-4',
-        'hover:bg-slate-50/60 dark:hover:bg-slate-800/30',
-        'focus-within:bg-slate-50/80 dark:focus-within:bg-slate-800/40',
+        'hover:bg-[rgba(255,197,90,0.04)]',
+        'focus-within:bg-[rgba(255,197,90,0.06)]',
         isDragging && 'opacity-40',
-        isDragTarget && 'bg-blue-500/[0.04] ring-1 ring-blue-400/40',
+        isDragTarget && 'bg-[rgba(255,197,90,0.05)] ring-1 ring-[rgba(255,197,90,0.4)]',
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -565,11 +571,11 @@ function SceneRow({
             disabled={disabled}
             className={cn(
               'flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md',
-              'text-muted-foreground/45 transition-all',
-              'hover:bg-muted hover:text-foreground/80',
-              'group-hover/scene:text-muted-foreground/70',
+              'text-[rgba(198,208,223,0.35)] transition-all',
+              'hover:bg-[rgba(255,197,90,0.08)] hover:text-[rgba(198,208,223,0.8)]',
+              'group-hover/scene:text-[rgba(198,208,223,0.6)]',
               'active:cursor-grabbing',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,197,90,0.3)]',
               disabled && 'pointer-events-none opacity-30',
             )}
           >
@@ -578,8 +584,8 @@ function SceneRow({
           <span
             className={cn(
               'relative flex size-7 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors',
-              'bg-muted/60 text-muted-foreground',
-              'group-hover/scene:bg-muted',
+              'bg-[rgba(255,197,90,0.12)] text-[rgba(198,208,223,0.8)]',
+              'group-hover/scene:bg-[rgba(255,197,90,0.2)]',
             )}
           >
             {index + 1}
@@ -612,8 +618,8 @@ function SceneRow({
               rows={1}
               spellCheck={false}
               className={cn(
-                'flex-1 resize-none border-none bg-transparent p-0 text-base font-semibold leading-7 tracking-tight',
-                'placeholder:font-normal placeholder:text-muted-foreground/40',
+                'flex-1 resize-none border-none bg-transparent p-0 text-base font-semibold leading-7 tracking-tight text-[#fff4dc]',
+                'placeholder:font-normal placeholder:text-[rgba(198,208,223,0.3)]',
                 'focus:outline-none focus:ring-0 md:text-lg',
                 disabled && 'cursor-default',
               )}
@@ -656,9 +662,9 @@ function SceneRow({
             disabled={disabled}
             rows={1}
             className={cn(
-              'block w-full resize-none border-none bg-transparent p-0 text-sm leading-relaxed text-muted-foreground',
-              'placeholder:text-muted-foreground/40',
-              'focus:outline-none focus:ring-0 focus:text-foreground/90',
+              'block w-full resize-none border-none bg-transparent p-0 text-sm leading-relaxed text-[rgba(198,208,223,0.65)]',
+              'placeholder:text-[rgba(198,208,223,0.3)]',
+              'focus:outline-none focus:ring-0 focus:text-[#fff4dc]',
               disabled && 'cursor-default',
             )}
           />
@@ -676,7 +682,7 @@ function SceneRow({
                   transition={{ duration: 0.15 }}
                   className={cn(
                     'group/chip inline-flex max-w-[18rem] items-center gap-1 rounded-full px-2.5 py-1 text-xs',
-                    'bg-muted/70 text-foreground/80',
+                    'bg-[rgba(255,197,90,0.1)] text-[rgba(198,208,223,0.85)]',
                   )}
                 >
                   <span className="whitespace-normal break-words" title={point}>
@@ -731,7 +737,7 @@ function EmptyState({
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          className="text-blue-500/70"
+          className="text-[rgba(255,197,90,0.7)]"
         >
           <Loader2 className="size-6" />
         </motion.div>
@@ -879,7 +885,7 @@ function StreamingPlaceholder({ nextIndex }: { nextIndex: number }) {
       {/* Left rail: spacer for grip column + spinner where the number badge would be */}
       <div className="flex shrink-0 items-center gap-0.5 pt-1">
         <span className="size-7" aria-hidden />
-        <span className="flex size-7 items-center justify-center rounded-full bg-blue-500/10 text-blue-500">
+        <span className="flex size-7 items-center justify-center rounded-full bg-[rgba(255,197,90,0.1)] text-[#ffc55a]">
           <Loader2 className="size-3.5 animate-spin" />
         </span>
       </div>
@@ -944,19 +950,17 @@ function InsertDivider({
           aria-hidden
           className={cn(
             'absolute top-1/2 h-px -translate-y-1/2 transition-colors',
-            // Edge: short, neutral line; between: longer, blue line
             isEdge
-              ? 'inset-x-16 bg-muted-foreground/40 group-hover/insert:bg-blue-500/60'
-              : 'inset-x-8 bg-blue-400/30 group-hover/insert:bg-blue-500/60',
+              ? 'inset-x-16 bg-[rgba(198,208,223,0.25)] group-hover/insert:bg-[rgba(255,197,90,0.6)]'
+              : 'inset-x-8 bg-[rgba(255,197,90,0.22)] group-hover/insert:bg-[rgba(255,197,90,0.6)]',
           )}
         />
         <span
           className={cn(
-            'relative flex items-center justify-center rounded-full text-white transition-all',
-            // Edge: smaller, neutral, no shadow until hover; between: full blue badge
+            'relative flex items-center justify-center rounded-full text-[#171008] transition-all',
             isEdge
-              ? 'size-4 bg-muted-foreground/60 group-hover/insert:size-5 group-hover/insert:bg-blue-500 group-hover/insert:shadow-md group-hover/insert:shadow-blue-500/30'
-              : 'size-5 bg-blue-500 shadow-md shadow-blue-500/30 group-hover/insert:scale-110',
+              ? 'size-4 bg-[rgba(198,208,223,0.45)] group-hover/insert:size-5 group-hover/insert:bg-[#ffc55a] group-hover/insert:shadow-md group-hover/insert:shadow-[rgba(255,197,90,0.35)]'
+              : 'size-5 bg-[#ffc55a] shadow-md shadow-[rgba(255,197,90,0.35)] group-hover/insert:scale-110',
           )}
         >
           <Plus className={cn('transition-all', isEdge ? 'size-2.5' : 'size-3')} />
@@ -1001,7 +1005,7 @@ function KeyPointInput({
           'inline-block rounded-full bg-transparent px-2.5 py-1 text-xs',
           'text-foreground placeholder:text-muted-foreground/50',
           'border border-dashed border-transparent transition-colors',
-          'hover:border-muted-foreground/20 focus:border-blue-400/50 focus:bg-blue-500/[0.03]',
+          'hover:border-[rgba(198,208,223,0.2)] focus:border-[rgba(255,197,90,0.45)] focus:bg-[rgba(255,197,90,0.03)]',
           'focus:outline-none focus:ring-0',
         )}
       />

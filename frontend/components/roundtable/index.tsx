@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Repeat,
-  BookOpen,
   Loader2,
   Volume2,
 } from 'lucide-react';
@@ -615,7 +614,7 @@ export function Roundtable({
     isProcessing;
   const toolbar = (
     <CanvasToolbar
-      className="shrink-0 h-8 px-3 border-b border-gray-100/40 dark:border-gray-700/30"
+      className="shrink-0 h-8 px-3 border-b border-[rgba(255,197,90,0.12)]"
       currentSceneIndex={currentSceneIndex}
       scenesCount={scenesCount}
       engineState={
@@ -1056,7 +1055,7 @@ export function Roundtable({
         'h-[192px] w-full flex flex-col relative z-10 transition-all duration-300',
         isPresenting && !controlsVisible
           ? 'border-t border-transparent bg-transparent backdrop-blur-none'
-          : 'border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md',
+          : 'border-t border-[rgba(255,197,90,0.18)] bg-[rgba(8,13,26,0.82)] backdrop-blur-md',
       )}
     >
       {/* ── Toolbar strip — merged from CanvasArea ── */}
@@ -1070,134 +1069,7 @@ export function Roundtable({
       </div>
       {/* ── Interaction area — three-column layout ── */}
       <div className="flex-1 flex items-stretch min-h-0">
-        {/* Left: Teacher identity */}
-        <div
-          className={cn(
-            'w-[90px] shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 overflow-visible relative transition-opacity duration-300',
-            isPresenting && !controlsVisible && 'opacity-0 pointer-events-none',
-          )}
-        >
-          {/* Decorative Element (Top) */}
-          <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-purple-50/50 dark:from-purple-900/10 to-transparent pointer-events-none" />
-          <div className="absolute top-3 inset-x-0 flex flex-col items-center justify-center gap-1 opacity-10 pointer-events-none">
-            <BookOpen size={20} className="text-purple-900 dark:text-purple-100" />
-            <div className="w-8 h-0.5 bg-purple-900 dark:bg-purple-100 rounded-full" />
-          </div>
-
-          {/* Main Content */}
-          <div className="flex-1 flex items-center justify-center gap-3 px-2 min-h-0 pb-1 pt-8">
-            {/* Avatar Group (Left) */}
-            <div
-              ref={teacherAvatarRef}
-              className="relative group cursor-pointer flex flex-col items-center justify-center gap-1"
-            >
-              <HoverCard openDelay={300} closeDelay={100}>
-                <HoverCardTrigger asChild>
-                  <div className="flex flex-col items-center gap-1">
-                    <div
-                      className={cn(
-                        'relative w-12 h-12 rounded-full transition-all duration-500 flex items-center justify-center',
-                        activeRole === 'teacher' ? 'scale-105' : 'opacity-90 scale-95',
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'absolute inset-0 rounded-full border-2 transition-all duration-500',
-                          activeRole === 'teacher'
-                            ? 'border-purple-500 dark:border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.4)]'
-                            : 'border-gray-200 dark:border-gray-700 group-hover:border-purple-300 dark:group-hover:border-purple-600',
-                        )}
-                      />
-
-                      <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 overflow-hidden relative z-10 shadow-sm border border-gray-50 dark:border-gray-700">
-                        <img
-                          src={teacherAvatar}
-                          alt={teacherName}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-
-                      {activeRole === 'teacher' && (
-                        <div className="absolute -right-0.5 top-0.5 w-4 h-4 bg-green-500 dark:bg-green-400 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center z-20">
-                          <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
-                        </div>
-                      )}
-                    </div>
-
-                    <span
-                      className={cn(
-                        'max-w-[80px] truncate px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border shadow-sm transition-all duration-300 bg-white/90 dark:bg-gray-800/90',
-                        activeRole === 'teacher' && !speakingStudent
-                          ? 'text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-700'
-                          : 'text-gray-400 dark:text-gray-500 border-gray-100 dark:border-gray-700 group-hover:text-purple-500 dark:group-hover:text-purple-400 group-hover:border-purple-200 dark:group-hover:border-purple-600',
-                      )}
-                    >
-                      {teacherName}
-                    </span>
-                  </div>
-                </HoverCardTrigger>
-                <HoverCardContent
-                  side="bottom"
-                  align="center"
-                  className="w-64 p-3 max-h-[300px] overflow-y-auto"
-                >
-                  {(() => {
-                    const teacherConfig = getAgentConfig(teacherParticipant?.id || '');
-                    return (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
-                            <img
-                              src={teacherAvatar}
-                              alt={teacherName}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">{teacherName}</p>
-                            <span
-                              className="inline-block text-[10px] leading-tight px-1.5 py-0.5 rounded-full text-white mt-0.5"
-                              style={{
-                                backgroundColor: teacherConfig?.color || '#8b5cf6',
-                              }}
-                            >
-                              {t('settings.agentRoles.teacher')}
-                            </span>
-                          </div>
-                        </div>
-                        {teacherConfig?.persona && (
-                          <p className="text-xs text-muted-foreground mt-2 leading-relaxed whitespace-pre-line">
-                            {teacherConfig.persona}
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </HoverCardContent>
-              </HoverCard>
-
-              {/* ProactiveCard from teacher avatar */}
-              <AnimatePresence>
-                {discussionRequest && discussionRequest.agentId === teacherParticipant?.id && (
-                  <ProactiveCard
-                    action={discussionRequest}
-                    mode={engineMode === 'paused' ? 'paused' : 'playback'}
-                    anchorRef={teacherAvatarRef}
-                    align="left"
-                    agentName={teacherName}
-                    agentAvatar={teacherAvatar}
-                    agentColor={getAgentConfig(teacherParticipant?.id || '')?.color}
-                    onSkip={() => onDiscussionSkip?.()}
-                    onListen={() => onDiscussionStart?.(discussionRequest)}
-                    onTogglePause={() => onPlayPause?.()}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
-
-        {/* Center: Interaction stage */}
+        {/* Center: Subtitle / interaction stage */}
         <div className="flex-1 relative mx-3 mb-2">
           {/* End flash banner (Issue 3) */}
           <AnimatePresence>
@@ -1232,7 +1104,7 @@ export function Roundtable({
                 if (isRecording || isProcessing) cancelRecording();
               }
             }}
-            className="relative w-full h-full rounded-[2.5rem] bg-gradient-to-b from-white/40 to-white/80 dark:from-gray-800/40 dark:to-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05),inset_0_1px_0_0_rgba(255,255,255,0.9)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col justify-center px-6 overflow-hidden group transition-all duration-700 cursor-default"
+            className="relative w-full h-full rounded-2xl bg-[rgba(5,7,17,0.55)] backdrop-blur-xl border border-[rgba(255,197,90,0.15)] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] flex flex-col justify-center px-6 overflow-hidden group transition-all duration-700 cursor-default"
           >
             {/* Text input box */}
             <AnimatePresence>
@@ -1567,14 +1439,14 @@ export function Roundtable({
                         'relative px-4 pt-2 pb-3 rounded-2xl text-[15px] leading-relaxed transition-all border w-[min(420px,calc(100%-3rem))] group/bubble flex flex-col max-h-[110px]',
                         bubbleRole === 'teacher' ? 'pl-4 pr-10' : 'pl-4 pr-10',
                         bubbleRole === 'user'
-                          ? 'bg-purple-600/95 dark:bg-purple-500/95 backdrop-blur-sm border-purple-400/40 dark:border-purple-300/40 text-white rounded-br-sm shadow-md shadow-purple-300/30 dark:shadow-purple-800/30'
+                          ? 'bg-[rgba(255,197,90,0.14)] backdrop-blur-sm border-[rgba(255,197,90,0.4)] text-[#fff4dc] rounded-br-sm shadow-md'
                           : bubbleRole === 'agent'
                             ? cn(
-                                'bg-blue-50/95 dark:bg-blue-950/60 backdrop-blur-sm border-blue-200/60 dark:border-blue-800/60 text-gray-700 dark:text-gray-200 rounded-br-sm shadow-sm',
+                                'bg-[rgba(20,70,160,0.22)] backdrop-blur-sm border-[rgba(120,170,255,0.35)] text-[#fff4dc] rounded-br-sm shadow-sm',
                                 (isInLiveFlow || isTopicPending) &&
                                   'hover:shadow-md cursor-pointer',
                               )
-                            : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-bl-sm shadow-sm hover:shadow-md cursor-pointer',
+                            : 'bg-[rgba(8,13,26,0.7)] border-[rgba(255,197,90,0.28)] text-[#fff4dc] rounded-bl-sm shadow-sm hover:shadow-md cursor-pointer',
                       )}
                     >
                       {bubbleRole &&
@@ -1764,13 +1636,120 @@ export function Roundtable({
           </div>
         </div>
 
-        {/* Right: Participants area */}
+        {/* Right: Participants area — teacher + companions + user in one panel */}
         <div
           className={cn(
-            'w-[140px] shrink-0 flex flex-col py-3 border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 overflow-visible transition-opacity duration-300',
+            'w-[160px] shrink-0 flex flex-col py-2.5 border-l border-[rgba(255,197,90,0.18)] bg-[rgba(5,7,17,0.4)] overflow-visible transition-opacity duration-300',
             isPresenting && !controlsVisible && 'opacity-0 pointer-events-none',
           )}
         >
+          {/* Teacher row — moved from left column into the shared roster */}
+          <div className="flex-none px-3 pb-2 relative">
+            <div
+              ref={teacherAvatarRef}
+              className="flex items-center gap-2 relative group cursor-pointer"
+            >
+              <HoverCard openDelay={300} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={cn(
+                        'relative w-9 h-9 rounded-full transition-all duration-300 flex items-center justify-center shrink-0',
+                        activeRole === 'teacher' ? 'scale-105' : 'opacity-90',
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'absolute inset-0 rounded-full border-2 transition-all duration-300',
+                          activeRole === 'teacher'
+                            ? 'border-[#ffc55a] shadow-[0_0_12px_rgba(255,197,90,0.4)]'
+                            : 'border-[rgba(255,197,90,0.3)] group-hover:border-[rgba(255,197,90,0.6)]',
+                        )}
+                      />
+                      <div className="w-7 h-7 rounded-full bg-[rgba(8,13,26,0.9)] overflow-hidden relative z-10">
+                        <img
+                          src={teacherAvatar}
+                          alt={teacherName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      {activeRole === 'teacher' && (
+                        <div className="absolute -right-0.5 top-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#050711] z-20 flex items-center justify-center">
+                          <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium truncate text-[rgba(198,208,223,0.85)] max-w-[92px]">
+                        {teacherName}
+                      </p>
+                      <span className="text-[9px] tracking-wide text-[#ffc55a]">
+                        {t('settings.agentRoles.teacher')}
+                      </span>
+                    </div>
+                  </div>
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="left"
+                  align="start"
+                  className="w-64 p-3 max-h-[300px] overflow-y-auto"
+                >
+                  {(() => {
+                    const teacherConfig = getAgentConfig(teacherParticipant?.id || '');
+                    return (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
+                            <img
+                              src={teacherAvatar}
+                              alt={teacherName}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{teacherName}</p>
+                            <span
+                              className="inline-block text-[10px] leading-tight px-1.5 py-0.5 rounded-full text-white mt-0.5"
+                              style={{ backgroundColor: teacherConfig?.color || '#8b5cf6' }}
+                            >
+                              {t('settings.agentRoles.teacher')}
+                            </span>
+                          </div>
+                        </div>
+                        {teacherConfig?.persona && (
+                          <p className="text-xs text-muted-foreground mt-2 leading-relaxed whitespace-pre-line">
+                            {teacherConfig.persona}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </HoverCardContent>
+              </HoverCard>
+
+              {/* ProactiveCard from teacher avatar */}
+              <AnimatePresence>
+                {discussionRequest && discussionRequest.agentId === teacherParticipant?.id && (
+                  <ProactiveCard
+                    action={discussionRequest}
+                    mode={engineMode === 'paused' ? 'paused' : 'playback'}
+                    anchorRef={teacherAvatarRef}
+                    align="left"
+                    agentName={teacherName}
+                    agentAvatar={teacherAvatar}
+                    agentColor={getAgentConfig(teacherParticipant?.id || '')?.color}
+                    onSkip={() => onDiscussionSkip?.()}
+                    onListen={() => onDiscussionStart?.(discussionRequest)}
+                    onTogglePause={() => onPlayPause?.()}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="mx-3 mb-1.5 h-px bg-[rgba(255,197,90,0.18)] shrink-0" />
+
           {/* Companion agent avatars — horizontal row, scrollable on overflow, arrows on hover */}
           <div className="flex-none relative group/scroll">
             {/* Left arrow */}
@@ -1781,9 +1760,9 @@ export function Roundtable({
                   behavior: 'smooth',
                 });
               }}
-              className="absolute left-0 top-0 bottom-0 w-5 z-10 flex items-center justify-center bg-gradient-to-r from-gray-50/90 dark:from-gray-900/90 to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
+              className="absolute left-0 top-0 bottom-0 w-5 z-10 flex items-center justify-center bg-gradient-to-r from-[rgba(5,7,17,0.9)] to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
             >
-              <ChevronLeft className="w-3.5 h-3.5 text-gray-400" />
+              <ChevronLeft className="w-3.5 h-3.5 text-[rgba(198,208,223,0.6)]" />
             </button>
 
             <div
@@ -1859,11 +1838,11 @@ export function Roundtable({
                               className={cn(
                                 'absolute inset-0 rounded-full border-2 transition-all duration-300',
                                 isSpeaking
-                                  ? 'border-purple-500 dark:border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.4)]'
-                                  : 'border-white dark:border-gray-700',
+                                  ? 'border-[#ffc55a] shadow-[0_0_8px_rgba(255,197,90,0.4)]'
+                                  : 'border-[rgba(255,197,90,0.25)]',
                               )}
                             />
-                            <div className="absolute inset-0.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                            <div className="absolute inset-0.5 rounded-full bg-[rgba(8,13,26,0.9)] overflow-hidden">
                               <img
                                 src={student.avatar}
                                 alt={student.name}
@@ -1872,13 +1851,13 @@ export function Roundtable({
                             </div>
                             {/* Speaking indicator */}
                             {isSpeaking && (
-                              <div className="absolute -right-0.5 -top-0.5 w-3 h-3 bg-green-500 rounded-full border border-white dark:border-gray-800 z-20 flex items-center justify-center">
+                              <div className="absolute -right-0.5 -top-0.5 w-3 h-3 bg-green-500 rounded-full border border-[#050711] z-20 flex items-center justify-center">
                                 <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
                               </div>
                             )}
                             {/* Loading indicator (Issue 5) */}
                             {isThinkingAgent && (
-                              <div className="absolute inset-0 rounded-full border-2 border-purple-400 border-t-transparent animate-spin z-20" />
+                              <div className="absolute inset-0 rounded-full border-2 border-[#ffc55a] border-t-transparent animate-spin z-20" />
                             )}
                           </div>
                         </HoverCardTrigger>
@@ -1930,9 +1909,9 @@ export function Roundtable({
                   behavior: 'smooth',
                 });
               }}
-              className="absolute right-0 top-0 bottom-0 w-5 z-10 flex items-center justify-center bg-gradient-to-l from-gray-50/90 dark:from-gray-900/90 to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
+              className="absolute right-0 top-0 bottom-0 w-5 z-10 flex items-center justify-center bg-gradient-to-l from-[rgba(5,7,17,0.9)] to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
             >
-              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+              <ChevronRight className="w-3.5 h-3.5 text-[rgba(198,208,223,0.6)]" />
             </button>
 
             {/* ProactiveCard for student/non-teacher agents — rendered via portal */}
@@ -1963,7 +1942,7 @@ export function Roundtable({
           </div>
 
           {/* Divider */}
-          <div className="mx-auto my-1.5 w-8 h-px bg-gray-200 dark:bg-gray-700 opacity-50 shrink-0" />
+          <div className="mx-3 my-1.5 h-px bg-[rgba(255,197,90,0.18)] shrink-0" />
 
           {/* User avatar + interaction buttons */}
           <div className="flex-1 flex items-center justify-center gap-3 px-2 min-h-0">
@@ -2001,10 +1980,10 @@ export function Roundtable({
                     className={cn(
                       'w-8 h-8 rounded-full border flex items-center justify-center transition-all active:scale-95 shadow-sm',
                       !asrEnabled
-                        ? 'bg-gray-100 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                        ? 'bg-[rgba(255,255,255,0.04)] text-[rgba(198,208,223,0.3)] border-[rgba(255,197,90,0.12)] cursor-not-allowed'
                         : isVoiceOpen
-                          ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
-                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-700',
+                          ? 'bg-[rgba(255,197,90,0.14)] border-[#ffc55a] text-[#ffc55a]'
+                          : 'bg-[rgba(8,13,26,0.8)] border-[rgba(255,197,90,0.25)] text-[rgba(198,208,223,0.6)] hover:bg-[rgba(255,197,90,0.08)] hover:text-[#ffc55a] hover:border-[rgba(255,197,90,0.5)]',
                     )}
                   >
                     {asrEnabled ? (
@@ -2021,8 +2000,8 @@ export function Roundtable({
                     className={cn(
                       'w-8 h-8 rounded-full border flex items-center justify-center transition-all active:scale-95 shadow-sm',
                       isInputOpen
-                        ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-700',
+                        ? 'bg-[rgba(255,197,90,0.14)] border-[#ffc55a] text-[#ffc55a]'
+                        : 'bg-[rgba(8,13,26,0.8)] border-[rgba(255,197,90,0.25)] text-[rgba(198,208,223,0.6)] hover:bg-[rgba(255,197,90,0.08)] hover:text-[#ffc55a] hover:border-[rgba(255,197,90,0.5)]',
                     )}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
@@ -2053,20 +2032,20 @@ export function Roundtable({
                     isCueUser
                       ? 'border-amber-500 dark:border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.4)] animate-pulse'
                       : activeRole === 'user' || isInputOpen
-                        ? 'border-purple-600 dark:border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.3)]'
-                        : 'border-white dark:border-gray-700 group-hover:border-purple-200 dark:group-hover:border-purple-600',
+                        ? 'border-[#ffc55a] shadow-[0_0_8px_rgba(255,197,90,0.35)]'
+                        : 'border-[rgba(255,197,90,0.25)] group-hover:border-[rgba(255,197,90,0.5)]',
                   )}
                 />
-                <div className="w-14 h-14 rounded-full bg-gray-50 dark:bg-gray-800 overflow-hidden relative z-10 shadow-sm border border-gray-50 dark:border-gray-700 text-2xl">
+                <div className="w-14 h-14 rounded-full bg-[rgba(8,13,26,0.9)] overflow-hidden relative z-10 shadow-sm border border-[rgba(255,197,90,0.15)] text-2xl">
                   <AvatarDisplay src={userAvatar} alt={t('roundtable.you')} />
                 </div>
-                <div className="absolute top-0 right-0 w-5 h-5 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-md border border-gray-100 dark:border-gray-700 z-20">
+                <div className="absolute top-0 right-0 w-5 h-5 bg-[rgba(8,13,26,0.9)] rounded-full flex items-center justify-center shadow-md border border-[rgba(255,197,90,0.2)] z-20">
                   <div
                     className={cn(
                       'w-1.5 h-1.5 rounded-full',
                       isInputOpen || isCueUser
-                        ? 'bg-purple-500 animate-pulse'
-                        : 'bg-gray-300 dark:bg-gray-600',
+                        ? 'bg-[#ffc55a] animate-pulse'
+                        : 'bg-[rgba(198,208,223,0.3)]',
                     )}
                   />
                 </div>
