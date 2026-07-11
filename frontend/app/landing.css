@@ -8,7 +8,7 @@
 .landing-page h1,.landing-page h2,.landing-page p { margin-top: 0; }
 .landing-reveal { opacity: 0; transform: translateY(38px); transition: opacity .85s ease, transform .85s cubic-bezier(.22,1,.36,1); }
 .landing-reveal.is-visible { opacity: 1; transform: translateY(0); }
-.zhixiang-view { display:grid; place-items:center; padding:42px 24px; background:linear-gradient(180deg,rgba(3,5,12,.45),rgba(3,5,12,.65)),url('/landing/134background.png') center/cover no-repeat; }
+.zhixiang-view { display:grid; place-items:center; padding:42px 24px; background:linear-gradient(180deg,rgba(3,5,12,.45),rgba(3,5,12,.65)),url('/landing/134background.png?v=20260711') center/cover no-repeat; }
 .zhixiang-center { display:flex; flex-direction:column; align-items:center; gap:20px; }
 @keyframes landing-up { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:none} }
 .zhixiang-title { margin:0 0 16px; font-family:"STSong","Songti SC",serif; font-weight:700; font-size:clamp(58px,8vw,100px); color:var(--gold); letter-spacing:.38em; line-height:1.1; text-align:center; animation:landing-up .9s ease both; }
@@ -19,7 +19,7 @@
 .scroll-cue { position:absolute; left:50%; bottom:28px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:8px; border:0; background:transparent; color:#fff9; font-size:12px; letter-spacing:.18em; cursor:pointer; }
 .scroll-cue i { width:1px; height:34px; background:linear-gradient(var(--gold),transparent); animation:scroll-pulse 1.6s ease-in-out infinite; }
 @keyframes scroll-pulse { 0%,100%{transform:scaleY(.45);transform-origin:top;opacity:.4} 50%{transform:scaleY(1);opacity:1} }
-.home-view { background:linear-gradient(180deg,rgba(3,5,12,.1),rgba(3,5,12,.35)),url('/landing/background.png') center/cover no-repeat; }
+.home-view { background:linear-gradient(180deg,rgba(3,5,12,.1),rgba(3,5,12,.35)),url('/landing/background.png?v=20260711') center/cover no-repeat; }
 .home-view::before { content:""; position:absolute; inset:0 0 auto; height:55%; background:linear-gradient(180deg,rgba(3,5,12,.78),transparent); z-index:1; pointer-events:none; }
 .home-view::after { content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 52%,transparent 0 34%,rgba(2,4,11,.22) 68%,rgba(2,4,11,.5)); pointer-events:none; }
 .home-header { position:relative; z-index:4; width:min(1180px,calc(100% - 44px)); margin:auto; padding-top:34px; }
@@ -54,7 +54,7 @@
 .aerospace-header h1,.pricing-header h1 { font-family:"STSong","Songti SC",serif; }
 .aerospace-header h1 { font-size:40px; line-height:1.08; margin-bottom:14px; text-shadow:0 6px 28px #0007; }
 .aerospace-copy { max-width:400px; color:var(--muted); font-size:15px; line-height:1.85; }
-.pricing-view { display:grid; place-items:center; padding:52px 24px; background:linear-gradient(#03050c99,#03050ce8),url('/landing/134background.png') center/cover fixed; }
+.pricing-view { display:grid; place-items:center; padding:52px 24px; background:linear-gradient(#03050c99,#03050ce8),url('/landing/134background.png?v=20260711') center/cover fixed; }
 .pricing-inner { position:relative; z-index:1; width:min(1100px,100%); }
 .pricing-header { text-align:center; margin-bottom:48px; }
 .pricing-header h1 { font-size:clamp(28px,3.5vw,48px); }
