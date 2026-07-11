@@ -5,6 +5,7 @@ import type { SessionType } from '@/lib/types/chat';
 import type { LectureNoteEntry } from '@/lib/types/chat';
 import type { DiscussionRequest } from '@/components/roundtable';
 import type { Action, SpeechAction, DiscussionAction } from '@/lib/types/action';
+import type { ClassroomPeerAgent } from '@/lib/classroom/peer-agents';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
@@ -49,6 +50,7 @@ export interface ChatAreaRef {
   startDiscussion: (request: DiscussionRequest) => Promise<void>;
   startLecture: (sceneId: string) => Promise<string>;
   addLectureMessage: (sessionId: string, action: Action, actionIndex: number) => void;
+  appendPeerMessage: (agent: ClassroomPeerAgent, text: string) => void;
   getIsStreaming: () => boolean;
   getActiveSessionType: () => string | null;
   getLectureMessageId: (sessionId: string) => string | null;
@@ -101,6 +103,7 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
       startDiscussion,
       startLecture,
       addLectureMessage,
+      appendPeerMessage,
       toggleSessionExpand,
       getLectureMessageId,
       pauseBuffer,
@@ -198,6 +201,7 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
       startDiscussion,
       startLecture,
       addLectureMessage,
+      appendPeerMessage,
       getIsStreaming: () => isStreaming,
       getActiveSessionType: () => activeSessionType,
       getLectureMessageId,

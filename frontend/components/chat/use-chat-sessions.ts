@@ -11,6 +11,7 @@ import type {
 import type { DiscussionRequest } from '@/components/roundtable';
 import type { Action, SpotlightAction, DiscussionAction } from '@/lib/types/action';
 import type { UIMessage } from 'ai';
+import type { ClassroomPeerAgent } from '@/lib/classroom/peer-agents';
 import type { ThinkingConfig } from '@/lib/types/provider';
 import { useStageStore } from '@/lib/store';
 import { useCanvasStore } from '@/lib/store/canvas';
@@ -1511,6 +1512,54 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
     return lectureMessageIds.current.get(sessionId) ?? null;
   }, []);
 
+  const appendPeerMessage = useCallback((agent: ClassroomPeerAgent, text: string) => {
+    const stageId = useStageStore.getState().stage?.id;
+    if (!stageId) return;
+    const sessionId = `peer-exchange-${stageId}`;
+    const now = Date.now();
+    const message: UIMessage<ChatMessageMetadata> = {
+      id: `peer-message-${agent.id}-${now}`,
+      role: 'assistant',
+      parts: [{ type: 'text', text }],
+      metadata: {
+        senderName: agent.name,
+        senderAvatar: agent.avatar,
+        originalRole: 'agent',
+        agentId: agent.id,
+        agentColor: agent.color,
+        personaLabel: agent.personaLabel,
+        createdAt: now,
+      },
+    };
+    setSessions((previous) => {
+      const existing = previous.find((session) => session.id === sessionId);
+      if (existing) {
+        return previous.map((session) =>
+          session.id === sessionId
+            ? { ...session, messages: [...session.messages, message], updatedAt: now }
+            : session,
+        );
+      }
+      return [
+        ...previous,
+        {
+          id: sessionId,
+          type: 'discussion',
+          title: '同学交流',
+          status: 'completed',
+          messages: [message],
+          config: { agentIds: [] },
+          toolCalls: [],
+          pendingToolCalls: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    });
+    setExpandedSessionIds((previous) => new Set([...previous, sessionId]));
+    setActiveSessionId(sessionId);
+  }, []);
+
   /** Pause the buffer for a session (lecture pause support). */
   const pauseBuffer = useCallback((sessionId: string) => {
     const buf = buffersRef.current.get(sessionId);
@@ -1564,6 +1613,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
     startDiscussion,
     startLecture,
     addLectureMessage,
+    appendPeerMessage,
     toggleSessionExpand,
     handleInterrupt,
     getLectureMessageId,
