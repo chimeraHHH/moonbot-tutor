@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   PanelLeftClose,
   PieChart,
@@ -40,6 +41,7 @@ export function SceneSidebar({
   isCourseComplete,
 }: SceneSidebarProps) {
   const { t } = useI18n();
+  const router = useRouter();
   const { scenes, currentSceneId, setCurrentSceneId, generatingOutlines, generationStatus } =
     useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
@@ -121,7 +123,15 @@ export function SceneSidebar({
       )}
 
       <div className={cn('flex flex-col w-full h-full overflow-hidden', collapsed && 'hidden')}>
-        <div className="h-10 flex items-center justify-end shrink-0 relative mt-3 mb-1 px-3">
+        {/* Logo Header */}
+        <div className="h-10 flex items-center justify-between shrink-0 relative mt-3 mb-1 px-3">
+          <button
+            onClick={() => router.push('/')}
+            className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
+            title={t('generation.backToHome')}
+          >
+            <img src="/logo-horizontal.png" alt="OpenMAIC" className="h-6" />
+          </button>
           <button
             onClick={() => onCollapseChange(true)}
             className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 ring-1 ring-black/[0.04] dark:ring-white/[0.06] hover:bg-gray-200/90 dark:hover:bg-gray-700/90 hover:text-gray-700 dark:hover:text-gray-200 active:scale-90 transition-all duration-200"
