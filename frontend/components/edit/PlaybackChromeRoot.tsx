@@ -41,13 +41,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AlertTriangle } from 'lucide-react';
 import { VisuallyHidden } from 'radix-ui';
-import { getCurrentModelConfig } from '@/lib/utils/model-config';
-import {
-  canTriggerPeerMessage,
-  extractPeerSceneContext,
-  resolvePeerSpeechCheckpoint,
-  type PeerAgentClassroomState,
-} from '@/lib/classroom/peer-agents';
 
 /**
  * Imperative handle exposed via `ref` so the parent (`Stage`) can tear
@@ -151,29 +144,14 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
 
     // Selected agents from settings store (Zustand)
     const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
-    const peerAgentState = useStageStore((s) => s.stage?.peerAgentState);
     const ttsMuted = useSettingsStore((s) => s.ttsMuted);
     const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
 
     // Generate participants from selected agents
-    const participants = useMemo(() => {
-      const base = agentsToParticipants(selectedAgentIds, t);
-      if (!peerAgentState) return base;
-      const teacher = base.find((participant) => participant.role === 'teacher');
-      const user = base.find((participant) => participant.role === 'user');
-      return [
-        ...(teacher ? [teacher] : []),
-        ...peerAgentState.agents.map((agent) => ({
-          id: agent.id,
-          name: `${agent.name} · ${agent.personaLabel}`,
-          role: 'student' as const,
-          avatar: agent.avatar,
-          isOnline: true,
-          isSpeaking: false,
-        })),
-        ...(user ? [user] : []),
-      ];
-    }, [peerAgentState, selectedAgentIds, t]);
+    const participants = useMemo(
+      () => agentsToParticipants(selectedAgentIds, t),
+      [selectedAgentIds, t],
+    );
 
     // Resolved AgentConfig array for hooks that need full agent objects
     // Subscribe to the agents record so voiceConfig changes trigger re-resolution
@@ -220,10 +198,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const lectureSessionIdRef = useRef<string | null>(null);
     const lectureActionCounterRef = useRef(0);
     const discussionAbortRef = useRef<AbortController | null>(null);
-    const peerAbortRef = useRef<AbortController | null>(null);
-    const peerCheckpointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const peerOwnsPauseRef = useRef(false);
-    const sceneSpeechNumberRef = useRef(0);
     const presentationIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const stageRef = useRef<HTMLDivElement>(null);
     // Guard to prevent double flash when manual stop triggers onDiscussionEnd
@@ -234,188 +208,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const autoStartRef = useRef(false);
     // Discussion buffer-level pause state (distinct from soft-pause which aborts SSE)
     const [isDiscussionPaused, setIsDiscussionPaused] = useState(false);
-
-    const markPeerTrigger = useCallback(
-      (
-        state: PeerAgentClassroomState,
-        sceneOrder: number,
-        status: 'complete' | 'skipped',
-        message?: string,
-      ) => {
-        const trigger = state.triggers.find((item) => item.sceneOrder === sceneOrder);
-        if (!trigger) return;
-        useStageStore.getState().setPeerAgentState({
-          ...state,
-          triggers: state.triggers.map((item) => {
-            if (item.sceneOrder === sceneOrder) return { ...item, status };
-            if (status === 'skipped' && trigger.kind === 'start' && item.kind === 'reply') {
-              return { ...item, status: 'skipped' };
-            }
-            return item;
-          }),
-          hasSpokenAgentIds:
-            status === 'complete' && !state.hasSpokenAgentIds.includes(trigger.speakerId)
-              ? [...state.hasSpokenAgentIds, trigger.speakerId]
-              : state.hasSpokenAgentIds,
-          firstMessage: trigger.kind === 'start' && message ? message : state.firstMessage,
-        });
-      },
-      [],
-    );
-
-    const runPeerInteraction = useCallback(
-      async (
-        scene: NonNullable<ReturnType<typeof getCurrentScene>>,
-        currentTeacherNarration: string,
-      ) => {
-        const stage = useStageStore.getState().stage;
-        const state = stage?.peerAgentState;
-        if (!state || scene.type !== 'slide') return;
-        const trigger = canTriggerPeerMessage(state, scene.order);
-        if (!trigger) return;
-
-        const context = extractPeerSceneContext(scene, currentTeacherNarration);
-        if (!context.teacherNarration) {
-          markPeerTrigger(state, scene.order, 'skipped');
-          return;
-        }
-
-        peerAbortRef.current?.abort();
-        const controller = new AbortController();
-        peerAbortRef.current = controller;
-        const latest = useStageStore.getState().stage?.peerAgentState;
-        const latestTrigger = latest ? canTriggerPeerMessage(latest, scene.order) : null;
-        if (!latest || !latestTrigger) return;
-        const agent = latest.agents.find((item) => item.id === latestTrigger.speakerId);
-        if (!agent) {
-          markPeerTrigger(latest, scene.order, 'skipped');
-          return;
-        }
-
-        try {
-          const modelConfig = getCurrentModelConfig();
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'x-model': modelConfig.modelString,
-            'x-api-key': modelConfig.apiKey,
-          };
-          if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
-          if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
-          const response = await fetch('/api/classroom/peer-message', {
-            method: 'POST',
-            headers,
-            signal: controller.signal,
-            body: JSON.stringify({
-              ...context,
-              firstMessage: latestTrigger.kind === 'reply' ? latest.firstMessage : undefined,
-              agent,
-              kind: latestTrigger.kind,
-              languageInstruction:
-                stage?.languageDirective ||
-                'Use the same language as the current slide and teacher narration.',
-            }),
-          });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = (await response.json()) as { success?: boolean; message?: string };
-          if (!data.success || !data.message?.trim()) throw new Error('Empty peer message');
-          const message = data.message.trim();
-          chatAreaRef.current?.appendPeerMessage(agent, message);
-          chatAreaRef.current?.switchToTab('chat');
-          setSpeakingAgentId(agent.id);
-          setLiveSpeech(message);
-          markPeerTrigger(latest, scene.order, 'complete', message);
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.min(4000, Math.max(1400, message.length * 45))),
-          );
-          setSpeakingAgentId((current) => (current === agent.id ? null : current));
-          setLiveSpeech((current) => (current === message ? null : current));
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            markPeerTrigger(latest, scene.order, 'skipped');
-            console.warn('[PeerInteraction] Skipped failed peer turn', error);
-          }
-        } finally {
-          if (peerAbortRef.current === controller) peerAbortRef.current = null;
-        }
-      },
-      [getCurrentScene, markPeerTrigger],
-    );
-
-    const clearPeerCheckpoint = useCallback(() => {
-      if (peerCheckpointTimerRef.current) clearTimeout(peerCheckpointTimerRef.current);
-      peerCheckpointTimerRef.current = null;
-    }, []);
-
-    const schedulePeerInterruption = useCallback(
-      (
-        scene: NonNullable<ReturnType<typeof getCurrentScene>>,
-        teacherNarration: string,
-        speechNumber: number,
-      ) => {
-        clearPeerCheckpoint();
-        const state = useStageStore.getState().stage?.peerAgentState;
-        if (!state || scene.type !== 'slide') return;
-        const trigger = canTriggerPeerMessage(state, scene.order);
-        if (!trigger) return;
-        const speechCount = (scene.actions ?? []).filter(
-          (action) => action.type === 'speech',
-        ).length;
-        const checkpoint = resolvePeerSpeechCheckpoint(trigger, speechCount);
-        if (!checkpoint || checkpoint.speechNumber !== speechNumber) return;
-
-        let fired = false;
-        const fire = () => {
-          if (fired) return;
-          fired = true;
-          clearPeerCheckpoint();
-          const engine = engineRef.current;
-          const stageState = useStageStore.getState();
-          if (!engine || engine.getMode() !== 'playing' || stageState.currentSceneId !== scene.id) {
-            return;
-          }
-
-          // The teacher is paused at the current knowledge point. The same
-          // audio/timer resumes from its original position after the peer turn.
-          peerOwnsPauseRef.current = true;
-          engine.pause();
-          if (lectureSessionIdRef.current) {
-            chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
-          }
-          void runPeerInteraction(scene, teacherNarration).finally(() => {
-            const stillOwnsPause = peerOwnsPauseRef.current;
-            peerOwnsPauseRef.current = false;
-            const latestEngine = engineRef.current;
-            if (
-              stillOwnsPause &&
-              latestEngine === engine &&
-              latestEngine.getMode() === 'paused' &&
-              useStageStore.getState().currentSceneId === scene.id
-            ) {
-              latestEngine.resume();
-              if (lectureSessionIdRef.current) {
-                chatAreaRef.current?.resumeBuffer(lectureSessionIdRef.current);
-              }
-            }
-          });
-        };
-
-        const cjkCount = (
-          teacherNarration.match(
-            /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g,
-          ) || []
-        ).length;
-        const isCJK = cjkCount > teacherNarration.length * 0.3;
-        const speed = useSettingsStore.getState().playbackSpeed || 1;
-        const estimatedMs = isCJK
-          ? Math.max(2000, teacherNarration.length * 150)
-          : Math.max(2000, teacherNarration.split(/\s+/).filter(Boolean).length * 240);
-        peerCheckpointTimerRef.current = setTimeout(
-          fire,
-          Math.max(700, (estimatedMs * checkpoint.progress) / speed),
-        );
-      },
-      [clearPeerCheckpoint, getCurrentScene, runPeerInteraction],
-    );
 
     /**
      * Resume a soft-paused topic: re-call /chat with existing session messages.
@@ -510,16 +302,12 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
             discussionAbortRef.current.abort();
             discussionAbortRef.current = null;
           }
-          peerAbortRef.current?.abort();
-          peerAbortRef.current = null;
-          clearPeerCheckpoint();
-          peerOwnsPauseRef.current = false;
           engineRef.current?.stop();
           discussionTTS.cleanup();
           resetSceneState();
         },
       }),
-      [clearPeerCheckpoint, discussionTTS, resetSceneState],
+      [discussionTTS, resetSceneState],
     );
 
     const clearPresentationIdleTimer = useCallback(() => {
@@ -622,11 +410,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     useEffect(() => {
       // Bump epoch so any stale SSE callbacks from the previous scene are discarded
       sceneEpochRef.current++;
-      peerAbortRef.current?.abort();
-      peerAbortRef.current = null;
-      clearPeerCheckpoint();
-      peerOwnsPauseRef.current = false;
-      sceneSpeechNumberRef.current = 0;
 
       // End any active QA/discussion session — this synchronously aborts the SSE
       // stream inside use-chat-sessions (abortControllerRef.abort()), preventing
@@ -694,8 +477,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         },
         onSpeechStart: (text) => {
           setLectureSpeech(text);
-          const speechNumber = ++sceneSpeechNumberRef.current;
-          schedulePeerInterruption(currentScene, text, speechNumber);
           // Add to lecture session with incrementing index for dedup
           // Chat area pacing is handled by the StreamBuffer (onTextReveal)
           if (lectureSessionIdRef.current) {
@@ -712,10 +493,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           }
         },
         onSpeechEnd: () => {
-          // Never interrupt after audio has ended: resuming an ended
-          // HTMLAudioElement can replay the teacher sentence from the start.
-          // A very short sentence simply misses its optional random turn.
-          clearPeerCheckpoint();
           // Don't clear lectureSpeech — let it persist until the next
           // onSpeechStart replaces it or the scene transitions.
           // Clearing here causes fallback to idleText (first sentence).
@@ -792,18 +569,17 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           // effect handles the reset.
           setPlaybackCompleted(true);
 
-          void (async () => {
-            if (lectureSessionIdRef.current) {
-              await chatAreaRef.current?.endSession(lectureSessionIdRef.current);
-              lectureSessionIdRef.current = null;
-            }
-
-            if (!useSettingsStore.getState().autoPlayLecture) return;
-            const completedSceneId = currentScene.id;
+          // End lecture session on playback complete
+          if (lectureSessionIdRef.current) {
+            chatAreaRef.current?.endSession(lectureSessionIdRef.current);
+            lectureSessionIdRef.current = null;
+          }
+          // Auto-play: advance to next scene after a short pause
+          const { autoPlayLecture } = useSettingsStore.getState();
+          if (autoPlayLecture) {
             setTimeout(() => {
               const stageState = useStageStore.getState();
               if (!useSettingsStore.getState().autoPlayLecture) return;
-              if (stageState.currentSceneId !== completedSceneId) return;
               const allScenes = stageState.scenes;
               const curId = stageState.currentSceneId;
               const idx = allScenes.findIndex((s) => s.id === curId);
@@ -832,7 +608,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                 stageState.setCurrentSceneId(PENDING_SCENE_ID);
               }
             }, 1500);
-          })();
+          }
         },
       });
 
@@ -867,9 +643,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         if (discussionAbortRef.current) {
           discussionAbortRef.current.abort();
         }
-        peerAbortRef.current?.abort();
-        clearPeerCheckpoint();
-        peerOwnsPauseRef.current = false;
         discussionTTS.cleanup();
         chatArea?.endActiveSession();
         clearPresentationIdleTimer();
@@ -1013,11 +786,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
         }
       } else if (mode === 'paused') {
-        if (peerOwnsPauseRef.current) {
-          // A manual play click during a peer turn means "continue now".
-          peerOwnsPauseRef.current = false;
-          peerAbortRef.current?.abort();
-        }
         engine.resume();
         // Resume lecture buffer
         if (lectureSessionIdRef.current) {
@@ -1034,7 +802,6 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         if (wasCompleted) {
           // Restart from beginning (user clicked restart after completion)
           lectureActionCounterRef.current = 0;
-          sceneSpeechNumberRef.current = 0;
           engine.start();
         } else {
           // Continue from current position (e.g. after discussion end)
@@ -1256,7 +1023,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     // when entering Pro mode.
     const sceneViewerHeight = (() => {
       const headerHeight = isPresenting ? 0 : 80;
-      const roundtableHeight = mode === 'playback' && !isPresenting ? 192 : 0;
+      const roundtableHeight = mode === 'playback' && !isPresenting ? 112 : 0;
       return `calc(100% - ${headerHeight + roundtableHeight}px)`;
     })();
 
@@ -1264,7 +1031,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       <div
         ref={stageRef}
         className={cn(
-          'flex-1 flex overflow-hidden bg-gray-50 dark:bg-gray-900',
+          'flex-1 flex overflow-hidden bg-transparent',
           isPresenting && !controlsVisible && 'cursor-none',
         )}
       >

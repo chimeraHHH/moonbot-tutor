@@ -16,7 +16,12 @@ describe('LandingPage', () => {
     expect(html).toContain('id="homeView"');
     expect(html).toContain('id="aerospaceView"');
     expect(html).toContain('id="pricingView"');
-    expect(html.match(/\/student\?preset=myth/g)).toHaveLength(4);
+    // Deep-space landing: each celestial node routes to its own preset.
+    expect(html).toContain('/student?preset=sun');
+    expect(html).toContain('/student?preset=moon');
+    expect(html).toContain('/student?preset=mars');
+    expect(html).toContain('/student?preset=stars');
+    expect(html).toContain('/student?preset=chanye');
     expect(html).toContain('/student?preset=rocket');
     expect(html).toContain('href="/student"');
   });

@@ -14,6 +14,7 @@ import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { migrateScene } from '@/lib/edit/slide-schema';
 import type { Scene } from '@/lib/types/stage';
+import '@/app/student.css';
 
 const log = createLogger('Classroom');
 
@@ -215,26 +216,43 @@ export default function ClassroomDetailPage() {
   return (
     <ThemeProvider>
       <MediaStageProvider value={classroomId}>
-        <div className="h-screen flex flex-col overflow-hidden">
+        <div className="student-page h-screen flex flex-col overflow-hidden">
           {loading ? (
-            <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <div className="text-center text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center" style={{ color: 'var(--muted)' }}>
                 <p>Loading classroom...</p>
               </div>
             </div>
           ) : error ? (
-            <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <div className="text-center">
-                <p className="text-destructive mb-4">Error: {error}</p>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <p className="mb-4" style={{ color: '#ff8080' }}>Error: {error}</p>
                 <button
                   onClick={() => {
                     setError(null);
                     setLoading(true);
                     loadClassroom();
                   }}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                  style={{
+                    padding: '10px 32px',
+                    background: 'rgba(5,7,17,0.82)',
+                    border: '1px solid rgba(255,197,90,0.55)',
+                    color: '#ffc55a',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    transition: 'border-color 0.2s, box-shadow 0.2s',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 16px rgba(255,197,90,0.25)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.55)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                  }}
                 >
-                  Retry
+                  重试
                 </button>
               </div>
             </div>

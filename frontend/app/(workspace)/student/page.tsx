@@ -1,5 +1,6 @@
 'use client';
 
+import '@/app/student.css';
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,7 +54,6 @@ import { useImportClassroom } from '@/lib/import/use-import-classroom';
 import { shouldShowVocationalTestUi } from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { resolveStudentPreset } from '@/lib/presets/student-presets';
-import { COURSEWARE_FEATURES_ENABLED } from '@/lib/classroom/paused-courseware';
 
 const log = createLogger('Home');
 
@@ -281,11 +281,8 @@ function HomePage() {
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,
-        // Reserved for restoring paused courseware modes:
-        // interactiveMode: form.vocationalTestMode ? true : form.interactiveMode,
-        // ...(form.vocationalTestMode ? { taskEngineMode: true } : {}),
-        interactiveMode: false,
-        taskEngineMode: false,
+        interactiveMode: form.vocationalTestMode ? true : form.interactiveMode,
+        ...(form.vocationalTestMode ? { taskEngineMode: true } : {}),
       };
 
       let pdfStorageKey: string | undefined;
@@ -337,11 +334,11 @@ function HomePage() {
   };
 
   useEffect(() => {
-    if (!preset || !hasUsableProvider || presetStartedRef.current) return;
+    if (!preset || presetStartedRef.current) return;
     presetStartedRef.current = true;
     setForm((previous) => ({ ...previous, requirement: preset.prompt }));
     updateRequirementCache(preset.prompt);
-    void handleGenerate(preset.prompt);
+    if (hasUsableProvider) void handleGenerate(preset.prompt);
     // The preset must be consumed only once per page mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset?.key, hasUsableProvider]);
@@ -368,7 +365,7 @@ function HomePage() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
+    <div className="student-page relative w-full flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
       <input
         ref={fileInputRef}
         type="file"
@@ -387,14 +384,8 @@ function HomePage() {
       )}
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '4s' }}
-        />
-        <div
-          className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '6s' }}
-        />
+        <div className="student-glow student-glow-top" />
+        <div className="student-glow student-glow-bottom" />
       </div>
 
       {/* ═══ Hero section: title + input (centered, wider) ═══ */}
@@ -403,19 +394,20 @@ function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className={cn(
-          'relative z-20 w-full max-w-[800px] flex flex-col items-center',
+          'relative z-20 w-full max-w-[1040px] flex flex-col items-center',
           classrooms.length === 0 ? 'justify-center min-h-[calc(100dvh-8rem)]' : 'mt-[10vh]',
         )}
       >
-        {/* ── Slogan ── */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
-          className="text-sm text-muted-foreground/60 mb-8"
+        {/* ── Title ── */}
+        <motion.h1
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+          className="s-title text-center mb-8"
+          style={{ fontSize: 'clamp(28px, 4vw, 48px)', letterSpacing: '0.12em', color: '#ffc55a' }}
         >
-          {t('home.slogan')}
-        </motion.p>
+          星燧计划
+        </motion.h1>
 
         {/* ── Unified input area ── */}
         <motion.div
@@ -424,17 +416,12 @@ function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-border/60 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-violet-500/[0.06]">
-            {/* ── Greeting + Profile + Agents ── */}
-            <div className="relative z-20 flex items-start justify-between">
-              <GreetingBar />
-            </div>
-
+          <div className="s-card w-full">
             {/* Textarea */}
             <textarea
               ref={textareaRef}
               placeholder={t('upload.requirementPlaceholder')}
-              className="w-full resize-none border-0 bg-transparent px-4 pt-1 pb-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none min-h-[140px] max-h-[300px]"
+              className="s-textarea w-full resize-none px-4 pt-4 pb-2 min-h-[140px] max-h-[300px]"
               value={form.requirement}
               onChange={(e) => updateForm('requirement', e.target.value)}
               onKeyDown={handleKeyDown}
@@ -442,51 +429,37 @@ function HomePage() {
             />
 
             {/* Toolbar row */}
-            <div className="px-3 pb-3 flex items-end gap-2">
-              <div className="flex-1 min-w-0">
-                <GenerationToolbar
-                  webSearch={form.webSearch}
-                  onWebSearchChange={(v) => updateForm('webSearch', v)}
-                  pdfFile={form.pdfFile}
-                  onPdfFileChange={(f) => updateForm('pdfFile', f)}
-                  onPdfError={setError}
-                />
-              </div>
-
-              {/* Interactive mode UI is retained but centrally paused. */}
-              {COURSEWARE_FEATURES_ENABLED && <Tooltip>
+            <div className="px-3 pb-3 flex items-center gap-2">
+              {/* 深度思考 — 左侧 */}
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 17 }}
                     onClick={() => updateForm('interactiveMode', !form.interactiveMode)}
                     className={cn(
-                      'relative inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap border shrink-0 h-8',
-                      form.interactiveMode
-                        ? 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.35)] dark:shadow-[0_0_12px_rgba(6,182,212,0.25)]'
-                        : 'border-cyan-300/60 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
+                      's-btn-interactive relative inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap border shrink-0 h-8',
+                      form.interactiveMode && 'is-active',
                     )}
                   >
                     {form.interactiveMode && (
-                      <span
-                        className="absolute inset-[-4px] rounded-full border border-cyan-400/40 dark:border-cyan-400/25"
-                        style={{
-                          animation: 'interactive-mode-breathe 2s ease-in-out infinite',
-                        }}
-                      />
+                      <span className="absolute inset-[-4px] rounded-full border border-[rgba(255,197,90,0.35)]" />
                     )}
                     <Atom className="size-3.5 relative z-10 animate-[spin_3s_linear_infinite]" />
-                    <span className="relative z-10">{t('toolbar.interactiveModeLabel')}</span>
+                    <span className="relative z-10">深度思考</span>
                   </motion.button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
                   {t('toolbar.interactiveModeHint')}
                 </TooltipContent>
-              </Tooltip>}
+              </Tooltip>
 
-              {/* Voice input */}
+              <div className="flex-1" />
+
+              {/* Voice input — 金色 */}
               <SpeechButton
                 size="md"
+                className="text-[#ffc55a] border-[rgba(255,197,90,0.35)] hover:border-[rgba(255,197,90,0.7)] hover:text-[#ffd980]"
                 onTranscription={(text) => {
                   setForm((prev) => {
                     const next = prev.requirement + (prev.requirement ? ' ' : '') + text;
@@ -500,12 +473,7 @@ function HomePage() {
               <button
                 onClick={() => handleGenerate()}
                 disabled={!canGenerate}
-                className={cn(
-                  'shrink-0 h-8 rounded-lg flex items-center justify-center gap-1.5 transition-all px-3',
-                  canGenerate
-                    ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm cursor-pointer'
-                    : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
-                )}
+                className={cn('s-btn-send shrink-0 h-8 flex items-center justify-center gap-1.5 transition-all px-4', !canGenerate && 'cursor-not-allowed')}
               >
                 <span className="text-xs font-medium">{t('toolbar.enterClassroom')}</span>
                 <ArrowUp className="size-3.5" />
@@ -519,8 +487,7 @@ function HomePage() {
           </div>
         </motion.div>
 
-        {/* Vocational task UI is retained but centrally paused. */}
-        {COURSEWARE_FEATURES_ENABLED && showVocationalTestUi && (
+        {showVocationalTestUi && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -617,8 +584,8 @@ function HomePage() {
         >
           {/* Trigger — divider-line with centered text */}
           <div className="group w-full flex items-center gap-4 py-2">
-            <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
-            <div className="shrink-0 flex items-center gap-3 text-[13px] text-muted-foreground/60 select-none">
+            <div className="s-divider-line flex-1 h-px transition-colors" />
+            <div className="shrink-0 flex items-center gap-3 text-[13px] s-divider select-none">
               <button
                 onClick={() => persistRecentOpen(!recentOpen)}
                 className="flex items-center gap-2 hover:text-foreground/70 transition-colors cursor-pointer"
@@ -739,7 +706,7 @@ function HomePage() {
                 </button>
               )}
             </div>
-            <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
+            <div className="s-divider-line flex-1 h-px transition-colors" />
           </div>
 
           {/* Expandable content */}
@@ -1123,8 +1090,7 @@ function ClassroomCard({
   }, [editing]);
 
   const isTaskEngineMode = classroom.taskEngineMode === true;
-  const showModeBadge =
-    COURSEWARE_FEATURES_ENABLED && (classroom.interactiveMode || isTaskEngineMode);
+  const showModeBadge = classroom.interactiveMode || isTaskEngineMode;
   const ModeBadgeIcon = isTaskEngineMode ? Sparkles : Atom;
   const modeBadgeLabel = isTaskEngineMode ? 'Vocational Mode' : t('toolbar.interactiveModeLabel');
 
@@ -1148,7 +1114,7 @@ function ClassroomCard({
       {/* Thumbnail — large radius, no border, subtle bg */}
       <div
         ref={thumbRef}
-        className="relative w-full aspect-[16/9] rounded-2xl bg-slate-100 dark:bg-slate-800/80 overflow-hidden transition-transform duration-200 group-hover:scale-[1.02]"
+        className="s-thumb-bg relative w-full aspect-[16/9] rounded-2xl overflow-hidden transition-transform duration-200 group-hover:scale-[1.02]"
       >
         {slide && thumbWidth > 0 ? (
           <SlideThumbnail

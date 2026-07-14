@@ -2,6 +2,7 @@ import openai
 import time
 import random
 import os
+import ssl
 import base64
 from openai import OpenAI
 import json
@@ -127,6 +128,18 @@ def _request_metadata(provider: str, base_url: Optional[str], model: str) -> Dic
     }
 
 
+def _is_transient_vertex_error(exc: Exception) -> bool:
+    """Transient proxy/Vertex faults worth retrying: connection drops, SSL EOF,
+    timeouts, and 429/5xx. Permanent 4xx (bad request/auth) must not retry."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return code == 429 or 500 <= code < 600
+    if isinstance(exc, (httpx.TransportError, httpx.TimeoutException, ConnectionError, ssl.SSLError)):
+        return True
+    msg = str(exc).upper()
+    return "UNEXPECTED_EOF" in msg or "EOF OCCURRED" in msg or "CONNECTION RESET" in msg
+
+
 def invoke_llm(
     *,
     provider: str,
@@ -153,23 +166,45 @@ def invoke_llm(
             request_body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
         url = f"https://{metadata['host']}{metadata['path']}"
         client = http_client or httpx.Client(timeout=120.0, trust_env=True)
-        try:
-            response = client.post(
-                url,
-                headers={
-                    "content-type": "application/json",
-                    "x-goog-api-key": api_key,
-                },
-                json=request_body,
-            )
-            response.raise_for_status()
-        except Exception as exc:
-            # Preserve the provider's error body; callers must never misreport it
-            # as an empty model response.
-            error_response = getattr(exc, "response", None)
-            error_body = getattr(error_response, "text", "") if error_response is not None else ""
-            detail = f"{exc}; response={error_body}" if error_body else str(exc)
-            raise RuntimeError(f"vertex-express request failed: {detail}") from exc
+        max_attempts = 4
+        response = None
+        for attempt in range(max_attempts):
+            try:
+                response = client.post(
+                    url,
+                    headers={
+                        "content-type": "application/json",
+                        "x-goog-api-key": api_key,
+                    },
+                    json=request_body,
+                )
+                response.raise_for_status()
+                break
+            except Exception as exc:
+                if _is_transient_vertex_error(exc) and attempt < max_attempts - 1:
+                    backoff = min(2**attempt, 8) + random.uniform(0, 0.5)
+                    print(
+                        json.dumps(
+                            {
+                                "event": "llm_retry",
+                                "provider": provider,
+                                "attempt": attempt + 1,
+                                "max": max_attempts,
+                                "reason": type(exc).__name__,
+                                "backoff": round(backoff, 3),
+                            },
+                            ensure_ascii=False,
+                        ),
+                        flush=True,
+                    )
+                    time.sleep(backoff)
+                    continue
+                # Preserve the provider's error body; callers must never misreport it
+                # as an empty model response.
+                error_response = getattr(exc, "response", None)
+                error_body = getattr(error_response, "text", "") if error_response is not None else ""
+                detail = f"{exc}; response={error_body}" if error_body else str(exc)
+                raise RuntimeError(f"vertex-express request failed: {detail}") from exc
         payload = response.json()
         finish_reason = None
         candidates = payload.get("candidates", []) or []
