@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
 
   const base = getBaseUrl();
   try {
-    const upstream = await fetch(`${base}/api/v1/deep-solve/tasks/${taskId}/video`, {
+    const upstream = await fetch(`${base}/api/v1/tasks/${taskId}/video`, {
       method: 'GET',
       cache: 'no-store',
     });

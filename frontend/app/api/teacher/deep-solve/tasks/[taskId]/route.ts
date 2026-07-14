@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
 
   const base = getBaseUrl();
   try {
-    const resp = await fetch(`${base}/api/v1/deep-solve/tasks/${taskId}`, {
+    const resp = await fetch(`${base}/api/v1/tasks/${taskId}`, {
       method: 'GET',
       cache: 'no-store',
     });
