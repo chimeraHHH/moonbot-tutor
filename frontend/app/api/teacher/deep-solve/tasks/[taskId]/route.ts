@@ -13,20 +13,13 @@ function getBaseUrl(): string {
 
 export const dynamic = 'force-dynamic';
 
-interface DeepSolveArtifact {
-  kind: string;
-  path: string;
-  url?: string | null;
-}
-
 interface DeepSolveStatus {
-  task_id: string;
-  state: string;
+  taskId: string;
+  status: string;
   progress?: number;
-  stage?: string;
-  message?: string;
-  artifacts?: DeepSolveArtifact[];
-  error?: { message?: string } | null;
+  stage?: string | null;
+  videoUrl?: string | null;
+  error?: string | null;
 }
 
 export async function GET(_req: NextRequest, context: { params: Promise<{ taskId: string }> }) {
@@ -51,21 +44,20 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
       );
     }
     const data = (await resp.json()) as DeepSolveStatus;
-    const ready = data.state === 'succeeded';
+    const ready = data.status === 'succeeded';
     // Proxy the video URL through our own route so the bridge origin is never
     // exposed to the browser.
     const videoUrl = ready ? `/api/teacher/deep-solve/tasks/${taskId}/video` : undefined;
-    const failed = data.state === 'failed' || data.state === 'cancelled';
+    const failed = data.status === 'failed' || data.status === 'cancelled';
     return apiSuccess({
       taskId,
-      state: data.state,
+      state: data.status,
       progress: typeof data.progress === 'number' ? data.progress : undefined,
       stage: data.stage,
-      message: data.message,
       ready,
       done: ready || failed,
       videoUrl,
-      error: failed ? data.error?.message || `Task ${data.state}` : undefined,
+      error: failed ? data.error || `Task ${data.status}` : undefined,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
