@@ -232,8 +232,10 @@ jobs:
           pcode=$(docker exec moonbot-code2video-candidate python -c "import httpx;print(httpx.Client(trust_env=True,timeout=20).get('https://aiplatform.googleapis.com/').status_code)" 2>/dev/null || echo 000)
           case "$pcode" in 401|403|404) echo "implicit proxy egress OK (HTTP $pcode)";; *) c2v_abort "implicit proxy egress returned '$pcode' (expected 401/403/404)";; esac
 
-          # Gate 3 — live Vertex smoke returns non-empty content.
-          docker exec moonbot-code2video-candidate python -c "import os,sys; from gpt_request import invoke_llm; r=invoke_llm(provider=os.environ['C2V_LLM_PROVIDER'],model=os.environ['C2V_LLM_MODEL'],messages=[{'role':'user','content':'1+1=?'}],api_key=os.environ['C2V_LLM_API_KEY'],max_tokens=16); sys.exit(0 if (r.content or '').strip() else 3)" || c2v_abort "Vertex smoke returned empty/failed"
+          # Gate 3 — live Vertex smoke returns non-empty content. Keep enough
+          # output budget for reasoning-capable models to produce visible text.
+          # Log only metadata so failures are diagnosable without leaking output.
+          docker exec moonbot-code2video-candidate python -c "import json,os,sys; from gpt_request import invoke_llm; r=invoke_llm(provider=os.environ['C2V_LLM_PROVIDER'],model=os.environ['C2V_LLM_MODEL'],messages=[{'role':'user','content':'Return exactly OK.'}],api_key=os.environ['C2V_LLM_API_KEY'],max_tokens=256); has_content=bool((r.content or '').strip()); print(json.dumps({'event':'vertex_smoke','finish_reason':r.finish_reason,'usage':r.usage,'has_content':has_content}),flush=True); sys.exit(0 if has_content else 3)" || c2v_abort "Vertex smoke returned empty/failed"
 
           # All gates passed — promote candidate, retire the old container.
           echo "candidate passed all gates; promoting"
