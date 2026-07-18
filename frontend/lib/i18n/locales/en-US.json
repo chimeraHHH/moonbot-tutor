@@ -1582,16 +1582,10 @@
     "speed": "Speed",
     "language": "Language"
   },
-  "accessCode": {
-    "title": "Enter Access Code",
-    "placeholder": "Access code",
-    "error": "Invalid access code. Please try again."
-  },
   "workspace": {
     "sidebar": {
       "student": "Student",
       "teacher": "Teacher",
-      "parent": "Parent",
       "admin": "Admin"
     }
   },
@@ -1610,7 +1604,7 @@
       "contextPlaceholder": "Grade level, prior knowledge, desired explanation style, etc.",
       "submit": "Generate video",
       "submitting": "Submitting…",
-      "notice": "The first render takes 5–15 minutes. Keep the backend (:8010) running.",
+      "notice": "The first render takes 5–15 minutes. Keep the video generation services running.",
       "progressTitle": "Task status",
       "stage": "Current stage",
       "download": "Download MP4",
@@ -1692,12 +1686,6 @@
         "ready": "Ready",
         "error": "Failed"
       }
-    }
-  },
-  "parent": {
-    "comingSoon": {
-      "title": "Parent portal coming soon",
-      "description": "We are designing the parent experience to surface learning progress, replay classroom sessions, and provide tailored suggestions. Stay tuned."
     }
   }
 }

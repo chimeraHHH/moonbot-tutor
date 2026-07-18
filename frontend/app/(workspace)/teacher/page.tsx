@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { TeacherWorkbench } from '@/components/teacher/teacher-workbench';
 
 export default function TeacherPage() {
-  redirect('/student');
+  return <TeacherWorkbench />;
 }

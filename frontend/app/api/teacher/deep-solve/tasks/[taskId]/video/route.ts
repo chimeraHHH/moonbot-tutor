@@ -1,19 +1,30 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
+import { getCurrentUser, isAuthEnabled } from '@/lib/server/auth';
+import { verifyTeacherTaskToken } from '@/lib/server/teacher-task-token';
 
 const log = createLogger('TeacherDeepSolveVideo');
 
 function getBaseUrl(): string {
-  return (process.env.VIDEO_DEEPSOLVE_BASE_URL || 'http://localhost:8010').replace(/\/+$/, '');
+  return (process.env.VIDEO_DEEPSOLVE_BASE_URL || 'http://localhost:8088').replace(/\/+$/, '');
 }
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest, context: { params: Promise<{ taskId: string }> }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await context.params;
-  if (!taskId || !/^[A-Za-z0-9_.-]+$/.test(taskId)) {
+  if (!taskId || !/^[A-Za-z0-9_.-]{1,128}$/.test(taskId)) {
     return apiError('INVALID_REQUEST', 400, 'Invalid taskId');
+  }
+
+  const user = await getCurrentUser();
+  if (isAuthEnabled() && !user) {
+    return apiError('INVALID_REQUEST', 401, 'Authentication required');
+  }
+  const accessToken = req.nextUrl.searchParams.get('accessToken') || '';
+  if (!verifyTeacherTaskToken(accessToken, taskId, user?.id || 'local-development')) {
+    return apiError('INVALID_REQUEST', 404, 'Task not found');
   }
 
   const base = getBaseUrl();

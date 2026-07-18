@@ -1582,16 +1582,10 @@
     "speed": "语速",
     "language": "语言"
   },
-  "accessCode": {
-    "title": "请输入访问码",
-    "placeholder": "访问码",
-    "error": "访问码错误，请重试。"
-  },
   "workspace": {
     "sidebar": {
       "student": "学生端",
       "teacher": "教师端",
-      "parent": "家长端",
       "admin": "管理后台"
     }
   },
@@ -1610,7 +1604,7 @@
       "contextPlaceholder": "可以补充年级、已学过的知识点或希望的讲解风格。",
       "submit": "生成视频",
       "submitting": "提交中…",
-      "notice": "首次生成需要 5–15 分钟，请保持后端 (:8010) 运行。",
+      "notice": "首次生成需要 5–15 分钟，请保持视频生成服务运行。",
       "progressTitle": "任务状态",
       "stage": "当前阶段",
       "download": "下载 MP4",
@@ -1692,12 +1686,6 @@
         "ready": "已完成",
         "error": "失败"
       }
-    }
-  },
-  "parent": {
-    "comingSoon": {
-      "title": "家长端即将上线",
-      "description": "我们正在设计家长端体验，帮助家长了解学习进度、查看课堂回放，并给到有针对性的建议。敬请期待。"
     }
   }
 }

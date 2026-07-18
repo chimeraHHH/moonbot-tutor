@@ -31,8 +31,7 @@ function isPublicPath(pathname: string): boolean {
     pathname === '/login' ||
     pathname === '/register' ||
     pathname === '/api/health' ||
-    pathname.startsWith('/api/auth/') ||
-    pathname.startsWith('/api/access-code/')
+    pathname.startsWith('/api/auth/')
   );
 }
 

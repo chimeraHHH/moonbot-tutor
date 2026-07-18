@@ -6,6 +6,7 @@ import {
 } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { getCurrentUser, isAuthEnabled } from '@/lib/server/auth';
 
 const log = createLogger('ClassroomJob API');
 
@@ -23,6 +24,14 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
 
     const job = await readClassroomGenerationJob(jobId);
     if (!job) {
+      return apiError('INVALID_REQUEST', 404, 'Classroom generation job not found');
+    }
+
+    const user = await getCurrentUser();
+    if (isAuthEnabled() && !user) {
+      return apiError('INVALID_REQUEST', 401, 'Authentication required');
+    }
+    if (job.ownerUserId && job.ownerUserId !== user?.id && user?.role !== 'admin') {
       return apiError('INVALID_REQUEST', 404, 'Classroom generation job not found');
     }
 

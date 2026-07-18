@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { createLogger } from '@/lib/logger';
 import { saveAsset, updateAsset } from '@/lib/teacher/history';
+import { toProgressPercent } from '@/lib/teacher/progress';
 import type { TeacherAsset } from '@/lib/teacher/types';
 
 const log = createLogger('DeepSolvePanel');
@@ -21,7 +22,6 @@ interface JobState {
   state: string;
   progress?: number;
   stage?: string;
-  message?: string;
   videoUrl?: string;
   error?: string;
   done: boolean;
@@ -33,17 +33,16 @@ interface StatusResponse {
   state?: string;
   progress?: number;
   stage?: string;
-  message?: string;
   videoUrl?: string;
   error?: string;
   done?: boolean;
-  errorCode?: string;
   details?: string;
 }
 
 interface SubmitResponse {
   success?: boolean;
   taskId?: string;
+  taskAccessToken?: string;
   error?: string;
   details?: string;
   errorCode?: string;
@@ -67,9 +66,12 @@ export function DeepSolvePanel() {
   useEffect(() => () => clearPoll(), [clearPoll]);
 
   const pollOnce = useCallback(
-    async (taskId: string, assetId: string) => {
+    async (taskId: string, assetId: string, taskAccessToken: string) => {
       try {
-        const res = await fetch(`/api/teacher/deep-solve/tasks/${taskId}`, { cache: 'no-store' });
+        const query = new URLSearchParams({ accessToken: taskAccessToken });
+        const res = await fetch(`/api/teacher/deep-solve/tasks/${taskId}?${query}`, {
+          cache: 'no-store',
+        });
         const data = (await res.json()) as StatusResponse;
         if (!res.ok || !data.success) {
           const err = data.details || data.error || `HTTP ${res.status}`;
@@ -89,7 +91,6 @@ export function DeepSolvePanel() {
                 state: data.state || prev.state,
                 progress: data.progress ?? prev.progress,
                 stage: data.stage ?? prev.stage,
-                message: data.message ?? prev.message,
                 videoUrl: data.videoUrl ?? prev.videoUrl,
                 error: data.error,
                 done: !!data.done,
@@ -107,10 +108,16 @@ export function DeepSolvePanel() {
           }
           return;
         }
-        pollTimerRef.current = setTimeout(() => pollOnce(taskId, assetId), POLL_INTERVAL_MS);
+        pollTimerRef.current = setTimeout(
+          () => pollOnce(taskId, assetId, taskAccessToken),
+          POLL_INTERVAL_MS,
+        );
       } catch (err) {
         log.error('poll failed:', err);
-        pollTimerRef.current = setTimeout(() => pollOnce(taskId, assetId), POLL_INTERVAL_MS);
+        pollTimerRef.current = setTimeout(
+          () => pollOnce(taskId, assetId, taskAccessToken),
+          POLL_INTERVAL_MS,
+        );
       }
     },
     [t],
@@ -135,7 +142,7 @@ export function DeepSolvePanel() {
         }),
       });
       const data = (await res.json()) as SubmitResponse;
-      if (!res.ok || !data.success || !data.taskId) {
+      if (!res.ok || !data.success || !data.taskId || !data.taskAccessToken) {
         const detail = data.details || data.error || `HTTP ${res.status}`;
         toast.error(
           data.errorCode === 'UPSTREAM_ERROR'
@@ -158,7 +165,7 @@ export function DeepSolvePanel() {
       };
       saveAsset(asset);
       setJob({ taskId: data.taskId, assetId, state: 'queued', done: false });
-      pollOnce(data.taskId, assetId);
+      pollOnce(data.taskId, assetId, data.taskAccessToken);
     } catch (err) {
       log.error('submit failed:', err);
       toast.error(t('teacher.deepSolve.error.submitFailed'));
@@ -231,7 +238,7 @@ export function DeepSolvePanel() {
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div
                 className="h-full bg-violet-500 transition-all"
-                style={{ width: `${Math.min(100, Math.round(job.progress * 100))}%` }}
+                style={{ width: `${toProgressPercent(job.progress)}%` }}
               />
             </div>
           )}
@@ -239,9 +246,6 @@ export function DeepSolvePanel() {
             <p className="text-xs text-muted-foreground">
               {t('teacher.deepSolve.stage')}: {job.stage}
             </p>
-          )}
-          {job.message && (
-            <p className="text-xs text-muted-foreground/80 whitespace-pre-line">{job.message}</p>
           )}
           {succeeded && job.videoUrl && (
             <div className="space-y-2">

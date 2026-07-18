@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { GraduationCap, LogOut, Presentation, Shield, Users } from 'lucide-react';
+import { GraduationCap, LogOut, Presentation, Shield } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { UserRole } from '@/lib/server/auth-types';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ interface RoleItem {
   href: string;
   labelKey: string;
   icon: typeof GraduationCap;
-  roles: UserRole[];
+  adminOnly?: boolean;
 }
 
 const ROLES: RoleItem[] = [
@@ -21,30 +21,20 @@ const ROLES: RoleItem[] = [
     href: '/student',
     labelKey: 'workspace.sidebar.student',
     icon: GraduationCap,
-    roles: ['student', 'admin'],
   },
   {
     href: '/teacher',
     labelKey: 'workspace.sidebar.teacher',
     icon: Presentation,
-    roles: ['teacher', 'admin'],
   },
-  {
-    href: '/parent',
-    labelKey: 'workspace.sidebar.parent',
-    icon: Users,
-    roles: ['parent', 'admin'],
-  },
-  { href: '/admin', labelKey: 'workspace.sidebar.admin', icon: Shield, roles: ['admin'] },
+  { href: '/admin', labelKey: 'workspace.sidebar.admin', icon: Shield, adminOnly: true },
 ];
 
 export function RoleSidebar({ currentUserRole }: { currentUserRole?: UserRole }) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
-  const visibleRoles = currentUserRole
-    ? ROLES.filter((item) => item.roles.includes(currentUserRole))
-    : ROLES;
+  const visibleRoles = ROLES.filter((item) => !item.adminOnly || currentUserRole === 'admin');
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });

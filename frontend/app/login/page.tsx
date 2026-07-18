@@ -33,8 +33,7 @@ function LoginForm() {
         throw new Error(data.error || '登录失败');
       }
 
-      const fallback = data.user?.role === 'admin' ? '/admin' : '/student';
-      router.replace(getSafeReturnPath(searchParams.get('next'), fallback));
+      router.replace(getSafeReturnPath(searchParams.get('next'), '/student'));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');

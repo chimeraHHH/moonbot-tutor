@@ -5,6 +5,6 @@ import { isAuthEnabled, requireCurrentUser } from '@/lib/server/auth';
 export const dynamic = 'force-dynamic';
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
-  if (isAuthEnabled()) await requireCurrentUser();
-  return <WorkspaceShell>{children}</WorkspaceShell>;
+  const user = isAuthEnabled() ? await requireCurrentUser() : null;
+  return <WorkspaceShell currentUserRole={user?.role}>{children}</WorkspaceShell>;
 }

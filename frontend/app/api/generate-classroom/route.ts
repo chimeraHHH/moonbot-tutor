@@ -7,15 +7,24 @@ import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
 import { getCurrentUser } from '@/lib/server/auth';
+import {
+  readJsonBody,
+  rejectCrossOriginRequest,
+} from '@/lib/server/request-security';
 
 const log = createLogger('GenerateClassroom API');
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const originError = rejectCrossOriginRequest(req);
+  if (originError) return originError;
+
   let requirementSnippet: string | undefined;
   try {
-    const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
+    const parsedBody = await readJsonBody<Partial<GenerateClassroomInput>>(req, 20 * 1024 * 1024);
+    if (!parsedBody.ok) return parsedBody.response;
+    const rawBody = parsedBody.value;
     requirementSnippet = rawBody.requirement?.substring(0, 60);
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',

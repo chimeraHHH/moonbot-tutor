@@ -4,15 +4,19 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { callLLM } from '@/lib/ai/llm';
+import {
+  readJsonBody,
+  rejectCrossOriginRequest,
+} from '@/lib/server/request-security';
 
 const log = createLogger('TeacherInteractiveHtml');
 
 const BodySchema = z.object({
-  topic: z.string().trim().min(1),
-  goal: z.string().trim().min(1),
-  interactionType: z.string().trim().min(1),
-  audience: z.string().trim().min(1),
-  constraints: z.string().trim().optional(),
+  topic: z.string().trim().min(1).max(200),
+  goal: z.string().trim().min(1).max(1000),
+  interactionType: z.string().trim().min(1).max(200),
+  audience: z.string().trim().min(1).max(200),
+  constraints: z.string().trim().max(1000).optional(),
 });
 
 const SYSTEM_PROMPT = `You are an expert educational front-end engineer. You produce a single self-contained interactive HTML page for teachers to demo in class.
@@ -37,8 +41,13 @@ function stripCodeFences(text: string): string {
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const originError = rejectCrossOriginRequest(req);
+  if (originError) return originError;
+
   try {
-    const raw = (await req.json().catch(() => null)) as unknown;
+    const parsedBody = await readJsonBody<unknown>(req);
+    if (!parsedBody.ok) return parsedBody.response;
+    const raw = parsedBody.value;
     const parsed = BodySchema.safeParse(raw);
     if (!parsed.success) {
       return apiError(
