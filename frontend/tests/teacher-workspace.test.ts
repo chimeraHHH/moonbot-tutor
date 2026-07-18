@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { toProgressPercent } from '@/lib/teacher/progress';
 import {
   createTeacherTaskToken,
@@ -33,5 +34,29 @@ describe('teacher progress display', () => {
     expect(toProgressPercent(-5)).toBe(0);
     expect(toProgressPercent(125)).toBe(100);
     expect(toProgressPercent(Number.NaN)).toBe(0);
+  });
+});
+
+describe('teacher task continuity', () => {
+  it('keeps every generator mounted while switching teacher tabs', () => {
+    const source = readFileSync(
+      new URL('../components/teacher/teacher-workbench.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(source.match(/<TabsContent[^>]*forceMount/g)).toHaveLength(3);
+  });
+
+  it('restores asynchronous jobs after leaving and returning to the teacher page', () => {
+    const deepSolveSource = readFileSync(
+      new URL('../components/teacher/deep-solve-panel.tsx', import.meta.url),
+      'utf8',
+    );
+    const pptSource = readFileSync(
+      new URL('../components/teacher/ppt-generator-panel.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(deepSolveSource).toContain('asset.ref.taskAccessToken');
+    expect(deepSolveSource).toContain('loadAssets().find');
+    expect(pptSource).toContain('loadAssets().find');
   });
 });

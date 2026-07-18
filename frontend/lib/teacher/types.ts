@@ -5,6 +5,7 @@ type TeacherAssetStatus = 'pending' | 'running' | 'ready' | 'error';
 interface TeacherAssetRef {
   jobId?: string;
   taskId?: string;
+  taskAccessToken?: string;
   classroomId?: string;
 }
 

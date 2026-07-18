@@ -30,13 +30,13 @@ export function TeacherWorkbench() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="ppt">
+        <TabsContent value="ppt" forceMount>
           <PptGeneratorPanel />
         </TabsContent>
-        <TabsContent value="deep-solve">
+        <TabsContent value="deep-solve" forceMount>
           <DeepSolvePanel />
         </TabsContent>
-        <TabsContent value="interactive">
+        <TabsContent value="interactive" forceMount>
           <InteractiveHtmlPanel />
         </TabsContent>
       </Tabs>
