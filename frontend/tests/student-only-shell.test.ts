@@ -7,14 +7,25 @@ describe('student-only shell', () => {
   it('does not render role, language, settings, or agent controls', () => {
     expect(read('components/workspace/workspace-shell.tsx')).not.toContain('RoleSidebar');
     const student = read('app/(workspace)/student/page.tsx');
-    for (const forbidden of ['LanguageSwitcher', 'SettingsDialog', '<AgentBar', 'setSettingsOpen']) {
+    for (const forbidden of [
+      'LanguageSwitcher',
+      'SettingsDialog',
+      '<AgentBar',
+      'setSettingsOpen',
+    ]) {
       expect(student).not.toContain(forbidden);
     }
   });
 
-  it.each(['teacher', 'parent', 'admin'])('redirects the %s route to student', (role) => {
+  it.each(['teacher', 'parent'])('redirects the %s route to student', (role) => {
     const source = read(`app/(workspace)/${role}/page.tsx`);
     expect(source).toContain("redirect('/student')");
+  });
+
+  it('protects the admin page with a database-backed role check', () => {
+    const source = read('app/(workspace)/admin/page.tsx');
+    expect(source).toContain("requireRole(['admin'])");
+    expect(source).toContain('<AdminDashboard');
   });
 
   it('marks the document as Chinese', () => {

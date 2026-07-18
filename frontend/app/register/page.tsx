@@ -7,13 +7,20 @@ import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  DISPLAY_NAME_MAX_LENGTH,
+  getSafeReturnPath,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from '@/lib/auth/validation';
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,15 +33,14 @@ function RegisterForm() {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName, email, password }),
+        body: JSON.stringify({ displayName, identifier, password, confirmPassword }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.error || '注册失败');
       }
 
-      const next = searchParams.get('next');
-      router.replace(next && next.startsWith('/') ? next : '/student');
+      router.replace(getSafeReturnPath(searchParams.get('next')));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : '注册失败');
@@ -55,9 +61,7 @@ function RegisterForm() {
           </div>
           <div className="max-w-xl pb-12">
             <p className="text-sm font-medium text-muted-foreground">AI 沉浸式学生课堂</p>
-            <h1 className="mt-4 text-5xl font-semibold tracking-normal">
-              创建你的学生学习空间
-            </h1>
+            <h1 className="mt-4 text-5xl font-semibold tracking-normal">创建你的学生学习空间</h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
               注册后即可生成可视化课程，并由一位教师全程引导学习。
             </p>
@@ -82,23 +86,24 @@ function RegisterForm() {
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <Label htmlFor="displayName">姓名</Label>
+                <Label htmlFor="displayName">昵称</Label>
                 <Input
                   id="displayName"
                   autoComplete="name"
                   value={displayName}
+                  maxLength={DISPLAY_NAME_MAX_LENGTH}
                   onChange={(event) => setDisplayName(event.target.value)}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
+                <Label htmlFor="identifier">手机号或邮箱</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
                   required
                 />
               </div>
@@ -108,9 +113,26 @@ function RegisterForm() {
                   id="password"
                   type="password"
                   autoComplete="new-password"
-                  minLength={8}
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  使用 {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} 个字符，并为星燧设置独立密码。
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">确认密码</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
                   required
                 />
               </div>

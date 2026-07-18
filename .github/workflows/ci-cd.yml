@@ -111,6 +111,11 @@ jobs:
           GOOGLE_VERTEX_LOCATION: ${{ secrets.GOOGLE_VERTEX_LOCATION }}
           DEFAULT_MODEL: ${{ secrets.DEFAULT_MODEL }}
           MODEL_ROUTES: ${{ secrets.MODEL_ROUTES }}
+          AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
+          AUTH_SESSION_SECRET: ${{ secrets.AUTH_SESSION_SECRET }}
+          AUTH_ADMIN_IDENTIFIER: ${{ secrets.AUTH_ADMIN_IDENTIFIER }}
+          AUTH_ADMIN_PASSWORD: ${{ secrets.AUTH_ADMIN_PASSWORD }}
+          AUTH_PUBLIC_URL: http://${{ secrets.SERVER_HOST }}:8089
         run: |
           set -euo pipefail
           REMOTE="$SERVER_USER@$SERVER_HOST"
@@ -138,6 +143,11 @@ jobs:
             printf 'GOOGLE_VERTEX_LOCATION=%q\n' "$GOOGLE_VERTEX_LOCATION"
             printf 'DEFAULT_MODEL=%q\n' "$DEFAULT_MODEL"
             printf 'MODEL_ROUTES=%q\n' "$MODEL_ROUTES"
+            printf 'AUTH_DB_PASSWORD=%q\n' "$AUTH_DB_PASSWORD"
+            printf 'AUTH_SESSION_SECRET=%q\n' "$AUTH_SESSION_SECRET"
+            printf 'AUTH_ADMIN_IDENTIFIER=%q\n' "$AUTH_ADMIN_IDENTIFIER"
+            printf 'AUTH_ADMIN_PASSWORD=%q\n' "$AUTH_ADMIN_PASSWORD"
+            printf 'AUTH_PUBLIC_URL=%q\n' "$AUTH_PUBLIC_URL"
             cat <<'REMOTE_SCRIPT'
           cd ~
           rm -rf moonbot-backend-src moonbot-c2v-src moonbot-frontend-src
@@ -158,6 +168,42 @@ jobs:
 
           docker network create moonbot-net 2>/dev/null || true
 
+          # Authentication is mandatory for this release. Abort before touching
+          # live application containers if any durable credential is missing.
+          test -n "$AUTH_DB_PASSWORD" || { echo "FATAL: AUTH_DB_PASSWORD is empty"; exit 1; }
+          test -n "$AUTH_SESSION_SECRET" || { echo "FATAL: AUTH_SESSION_SECRET is empty"; exit 1; }
+          test -n "$AUTH_ADMIN_IDENTIFIER" || { echo "FATAL: AUTH_ADMIN_IDENTIFIER is empty"; exit 1; }
+          test -n "$AUTH_ADMIN_PASSWORD" || { echo "FATAL: AUTH_ADMIN_PASSWORD is empty"; exit 1; }
+          [ "${#AUTH_SESSION_SECRET}" -ge 32 ] || { echo "FATAL: AUTH_SESSION_SECRET is too short"; exit 1; }
+          [ "${#AUTH_ADMIN_PASSWORD}" -ge 12 ] || { echo "FATAL: AUTH_ADMIN_PASSWORD is too short"; exit 1; }
+          case "$AUTH_DB_PASSWORD" in *[!A-Za-z0-9_-]*) echo "FATAL: AUTH_DB_PASSWORD must be URL-safe"; exit 1;; esac
+
+          # Keep PostgreSQL private on moonbot-net with a named volume. The
+          # image is resolved before any existing production container stops.
+          docker image inspect postgres:16-alpine >/dev/null 2>&1 || docker pull postgres:16-alpine
+          docker volume create moonbot-postgres-data >/dev/null
+          if docker inspect moonbot-postgres >/dev/null 2>&1; then
+            docker network connect moonbot-net moonbot-postgres 2>/dev/null || true
+            docker start moonbot-postgres >/dev/null
+          else
+            docker run -d --name moonbot-postgres --restart unless-stopped --network moonbot-net \
+              -e POSTGRES_DB=moonbot \
+              -e POSTGRES_USER=moonbot \
+              -e POSTGRES_PASSWORD="$AUTH_DB_PASSWORD" \
+              -v moonbot-postgres-data:/var/lib/postgresql/data \
+              postgres:16-alpine >/dev/null
+          fi
+          db_ok=""
+          for _ in $(seq 1 30); do
+            if docker exec moonbot-postgres pg_isready -U moonbot -d moonbot >/dev/null 2>&1; then
+              db_ok=1
+              break
+            fi
+            sleep 2
+          done
+          [ -n "$db_ok" ] || { echo "FATAL: authentication database is not ready"; exit 1; }
+          AUTH_DATABASE_URL="postgresql://moonbot:${AUTH_DB_PASSWORD}@moonbot-postgres:5432/moonbot"
+
           # code2video (heavy: manim + LaTeX base; layers cache after first build)
           echo "::group::Build code2video image"
           docker build --progress=plain -t moonbot-code2video:ci moonbot-c2v-src
@@ -170,6 +216,75 @@ jobs:
           echo "::group::Build frontend image"
           docker build --progress=plain -t moonbot-frontend:ci moonbot-frontend-src
           echo "::endgroup::"
+
+          # Apply immutable migrations, create the initial administrator once,
+          # then prove the release can reach PostgreSQL and authenticate it.
+          docker run --rm --network moonbot-net \
+            -e DATABASE_URL="$AUTH_DATABASE_URL" \
+            -e ADMIN_IDENTIFIER="$AUTH_ADMIN_IDENTIFIER" \
+            -e ADMIN_PASSWORD="$AUTH_ADMIN_PASSWORD" \
+            -e ADMIN_NAME="星燧管理员" \
+            moonbot-frontend:ci \
+            sh -c 'node scripts/migrate-db.mjs && node scripts/create-admin-user.mjs'
+
+          # Exercise the real login path with a one-time administrator instead
+          # of depending on the bootstrap administrator's password forever.
+          # This keeps future deployments working after the owner rotates that
+          # password from the admin console.
+          AUTH_SMOKE_IDENTIFIER="deploy-smoke-$(date +%s)-$RANDOM@sophos.local"
+          AUTH_SMOKE_PASSWORD="$(docker run --rm moonbot-frontend:ci node -e "process.stdout.write(require('node:crypto').randomBytes(24).toString('base64url'))")"
+          docker run --rm --network moonbot-net \
+            -e DATABASE_URL="$AUTH_DATABASE_URL" \
+            -e ADMIN_IDENTIFIER="$AUTH_SMOKE_IDENTIFIER" \
+            -e ADMIN_PASSWORD="$AUTH_SMOKE_PASSWORD" \
+            -e ADMIN_NAME="Deployment smoke administrator" \
+            moonbot-frontend:ci \
+            node scripts/create-admin-user.mjs
+
+          remove_auth_smoke() {
+            docker run --rm --network moonbot-net \
+              -e DATABASE_URL="$AUTH_DATABASE_URL" \
+              -e SMOKE_IDENTIFIER="$AUTH_SMOKE_IDENTIFIER" \
+              moonbot-frontend:ci \
+              node --input-type=module -e 'import pg from "pg"; const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL }); await pool.query("DELETE FROM users WHERE login_identifier = $1", [process.env.SMOKE_IDENTIFIER]); await pool.end();' \
+              >/dev/null 2>&1 || true
+          }
+          trap remove_auth_smoke EXIT
+
+          docker rm -f moonbot-frontend-candidate 2>/dev/null || true
+          docker run -d --name moonbot-frontend-candidate --restart no --network moonbot-net \
+            -e PORT=3000 \
+            -e AUTH_ENABLED=true \
+            -e DATABASE_URL="$AUTH_DATABASE_URL" \
+            -e SESSION_SECRET="$AUTH_SESSION_SECRET" \
+            -e AUTH_PUBLIC_URL="$AUTH_PUBLIC_URL" \
+            -e AUTH_COOKIE_SECURE=false \
+            moonbot-frontend:ci >/dev/null
+
+          frontend_abort() {
+            echo "frontend candidate validation FAILED: $1"
+            docker logs --tail 50 moonbot-frontend-candidate 2>&1 || true
+            docker rm -f moonbot-frontend-candidate 2>/dev/null || true
+            echo "existing moonbot-frontend left running; deploy aborted"
+            exit 1
+          }
+
+          frontend_ok=""
+          for _ in $(seq 1 30); do
+            code=$(docker exec moonbot-frontend-candidate node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>console.log(r.status)).catch(()=>console.log(0))" 2>/dev/null || echo 0)
+            [ "$code" = "200" ] && { frontend_ok=1; break; }
+            sleep 2
+          done
+          [ -n "$frontend_ok" ] || frontend_abort "health endpoint never returned 200"
+
+          docker exec \
+            -e SMOKE_IDENTIFIER="$AUTH_SMOKE_IDENTIFIER" \
+            -e SMOKE_PASSWORD="$AUTH_SMOKE_PASSWORD" \
+            moonbot-frontend-candidate node -e "fetch('http://127.0.0.1:3000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identifier:process.env.SMOKE_IDENTIFIER,password:process.env.SMOKE_PASSWORD})}).then(async r=>{const body=await r.json();console.log(JSON.stringify({event:'admin_login_smoke',status:r.status,success:body.success===true,role:body.user?.role}));if(!r.ok||body.success!==true||body.user?.role!=='admin')process.exit(3)}).catch(()=>process.exit(4))" \
+            || frontend_abort "administrator login smoke failed"
+          remove_auth_smoke
+          trap - EXIT
+          docker rm -f moonbot-frontend-candidate >/dev/null
 
           # --- code2video: fail-safe candidate deployment ------------------
           # A missing/incorrect secret must ABORT the deploy and leave the
@@ -252,10 +367,18 @@ jobs:
             -e CODE2VIDEO_BASE_URL=http://moonbot-code2video:8010 \
             moonbot-backend:ci
 
-          docker stop moonbot-frontend 2>/dev/null || true
-          docker rm   moonbot-frontend 2>/dev/null || true
-          docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
+          FRONTEND_OLD="moonbot-frontend-old-$(date -u +%Y%m%dT%H%M%SZ)"
+          if docker inspect moonbot-frontend >/dev/null 2>&1; then
+            docker stop moonbot-frontend >/dev/null
+            docker rename moonbot-frontend "$FRONTEND_OLD"
+          fi
+          if ! docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
             -e PORT=3000 \
+            -e AUTH_ENABLED=true \
+            -e DATABASE_URL="$AUTH_DATABASE_URL" \
+            -e SESSION_SECRET="$AUTH_SESSION_SECRET" \
+            -e AUTH_PUBLIC_URL="$AUTH_PUBLIC_URL" \
+            -e AUTH_COOKIE_SECURE=false \
             -e ALLOW_LOCAL_NETWORKS=true \
             -e DEFAULT_MODEL="$DEFAULT_MODEL" \
             -e MODEL_ROUTES="$MODEL_ROUTES" \
@@ -271,7 +394,33 @@ jobs:
             -e https_proxy=http://proxy:7890 \
             -e NO_PROXY=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
             -e no_proxy=localhost,127.0.0.1,moonbot-tutor-backend,moonbot-code2video,proxy \
-            moonbot-frontend:ci
+            moonbot-frontend:ci; then
+            docker rm -f moonbot-frontend 2>/dev/null || true
+            if docker inspect "$FRONTEND_OLD" >/dev/null 2>&1; then
+              docker rename "$FRONTEND_OLD" moonbot-frontend
+              docker start moonbot-frontend >/dev/null
+            fi
+            echo "FATAL: failed to start authenticated frontend; previous frontend restored"
+            exit 1
+          fi
+
+          live_frontend_ok=""
+          for _ in $(seq 1 30); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8089/api/health || echo 000)
+            [ "$code" = "200" ] && { live_frontend_ok=1; break; }
+            sleep 2
+          done
+          if [ -z "$live_frontend_ok" ]; then
+            docker logs --tail 50 moonbot-frontend 2>&1 || true
+            docker rm -f moonbot-frontend 2>/dev/null || true
+            if docker inspect "$FRONTEND_OLD" >/dev/null 2>&1; then
+              docker rename "$FRONTEND_OLD" moonbot-frontend
+              docker start moonbot-frontend >/dev/null
+            fi
+            echo "FATAL: authenticated frontend health failed; previous frontend restored"
+            exit 1
+          fi
+          docker rm -f "$FRONTEND_OLD" 2>/dev/null || true
 
           docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
           REMOTE_SCRIPT

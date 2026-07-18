@@ -32,5 +32,10 @@ RUN apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# Database migrations and the bootstrap-admin command run from this same,
+# immutable release image before the frontend container is promoted.
+COPY --from=builder /app/db ./db
+COPY --from=builder /app/scripts/migrate-db.mjs ./scripts/migrate-db.mjs
+COPY --from=builder /app/scripts/create-admin-user.mjs ./scripts/create-admin-user.mjs
 EXPOSE 3000
 CMD ["node", "server.js"]

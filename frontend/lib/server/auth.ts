@@ -1,7 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isDatabaseConfigured } from '@/lib/server/db';
-import { findUserById, touchAndReadSession } from '@/lib/server/auth-store';
+import { touchAndReadSession } from '@/lib/server/auth-store';
 import type { AuthUser, UserRole } from '@/lib/server/auth-types';
 import {
   SESSION_COOKIE_NAME,
@@ -68,21 +68,10 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!claims) return null;
 
   try {
-    return await touchAndReadSession({ sessionId: claims.sid, userId: claims.uid });
+    return await touchAndReadSession({ sessionId: claims.sid });
   } catch {
     return null;
   }
-}
-
-export async function getCurrentUserFast(): Promise<AuthUser | null> {
-  if (!isAuthEnabled()) return null;
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const claims = token ? verifySessionToken(token) : null;
-  if (!claims) return null;
-
-  return findUserById(claims.uid);
 }
 
 export async function requireCurrentUser(): Promise<AuthUser> {
@@ -108,5 +97,6 @@ export function getSessionCookieOptions() {
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS,
     secure: shouldUseSecureSessionCookie(),
+    priority: 'high' as const,
   };
 }

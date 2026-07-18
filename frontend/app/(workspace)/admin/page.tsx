@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation';
+import { AdminDashboard } from '@/components/admin/admin-dashboard';
+import { requireRole } from '@/lib/server/auth';
 
-export default function AdminPage() {
-  redirect('/student');
+export default async function AdminPage() {
+  const user = await requireRole(['admin']);
+  return <AdminDashboard currentUserId={user.id} currentUserName={user.displayName} />;
 }
