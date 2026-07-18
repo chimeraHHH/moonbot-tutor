@@ -9,11 +9,12 @@
 .landing-reveal { opacity: 0; transform: translateY(38px); transition: opacity .85s ease, transform .85s cubic-bezier(.22,1,.36,1); }
 .landing-reveal.is-visible { opacity: 1; transform: translateY(0); }
 .zhixiang-view { display:grid; place-items:center; padding:42px 24px; background:linear-gradient(180deg,rgba(3,5,12,.45),rgba(3,5,12,.65)),url('/landing/134background.png?v=20260711') center/cover no-repeat; }
+.landing-brand { position:absolute; top:clamp(24px,4vw,48px); left:clamp(24px,5vw,72px); z-index:2; color:var(--gold); font-family:"STSong","Songti SC",serif; font-size:clamp(24px,2.8vw,38px); font-weight:400; letter-spacing:.12em; line-height:1; text-shadow:0 6px 28px #0007; animation:landing-up .9s ease both; }
 .zhixiang-center { display:flex; flex-direction:column; align-items:center; gap:20px; }
 @keyframes landing-up { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:none} }
 .zhixiang-title { margin:0 0 16px; font-family:"STSong","Songti SC",serif; font-weight:700; font-size:clamp(58px,8vw,100px); color:var(--gold); letter-spacing:.38em; line-height:1.1; text-align:center; animation:landing-up .9s ease both; }
 .zhixiang-sub { margin:0 auto; font-family:"STSong","Songti SC",serif; font-size:clamp(30px,4vw,50px); font-weight:400; color:var(--ink); text-shadow:0 6px 28px #0007; text-align:center; animation:landing-up .9s .35s ease both; }
-.enter-btn,.direct-entry { padding:12px 36px; border:1.5px solid var(--gold); border-radius:999px; background:#0004; color:var(--gold); font-family:"STSong","Songti SC",serif; font-size:16px; letter-spacing:.12em; cursor:pointer; transition:.22s ease; }
+.enter-btn,.direct-entry { display:inline-flex; align-items:center; justify-content:center; padding:12px 36px; border:1.5px solid var(--gold); border-radius:999px; background:#0004; color:var(--gold); font-family:"STSong","Songti SC",serif; font-size:16px; letter-spacing:.12em; text-decoration:none; cursor:pointer; transition:.22s ease; }
 .enter-btn { margin-top:8px; animation:landing-up .9s .7s ease both; }
 .enter-btn:hover,.direct-entry:hover { background:#0008; border-color:#ffd980; color:#ffd980; box-shadow:0 0 28px #ffc55a42; }
 .scroll-cue { position:absolute; left:50%; bottom:28px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:8px; border:0; background:transparent; color:#fff9; font-size:12px; letter-spacing:.18em; cursor:pointer; }
@@ -68,7 +69,7 @@
 .plan-features { list-style:none; margin:0; padding:16px 0 0; width:100%; border-top:1px solid #ffc55a33; display:flex; flex-direction:column; gap:10px; }
 .plan-features li { color:var(--muted); font-family:"STSong","Songti SC",serif; line-height:1.5; }
 .plan-features li::before { content:"□ "; }
-.direct-entry { display:inline-flex; text-decoration:none; }
+.direct-entry { display:inline-flex; }
 @media(max-width:900px){.orbit-field{transform:translate(-50%,-50%) scale(.72)}.pricing-grid{grid-template-columns:1fr}.pricing-card{min-height:0}.aerospace-header{max-width:55%}.aerospace-header h1{font-size:30px}}
 @media(max-width:640px){.zhixiang-title{letter-spacing:.18em}.home-header{width:calc(100% - 28px)}.brand-title{font-size:36px}.orbit-field{transform:translate(-50%,-50%) scale(.48)}.yinghe-corner{width:260px}.aerospace-header{max-width:80%;top:28px}.aerospace-header h1{font-size:25px}.aerospace-copy{font-size:13px}.aerospace-rocket{left:24%;width:480px}.pricing-view{padding:44px 18px}}
 @media(prefers-reduced-motion:reduce){.landing-page{scroll-behavior:auto}.landing-page *{animation:none!important;transition-duration:.01ms!important}.landing-reveal{opacity:1;transform:none}.orbit-field{transform:translate(-50%,-50%)}}
