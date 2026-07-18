@@ -1,84 +1,90 @@
 import { cookies } from 'next/headers';
 import { type NextRequest } from 'next/server';
+import { normalizeLoginIdentifier, PASSWORD_MAX_LENGTH } from '@/lib/auth/validation';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { isAuthEnabled, getSessionCookieOptions } from '@/lib/server/auth';
 import { isDatabaseConfigured } from '@/lib/server/db';
 import {
-  countRecentFailedLoginAttempts,
+  countRecentFailedAuthAttempts,
   createSession,
-  findUserByEmail,
+  findUserByIdentifier,
   markUserLogin,
-  recordLoginAttempt,
+  recordAuthAttempt,
   writeAuditLog,
 } from '@/lib/server/auth-store';
-import { verifyPassword } from '@/lib/server/password';
+import { DUMMY_PASSWORD_HASH, verifyPassword } from '@/lib/server/password';
+import {
+  getRequestMeta,
+  readJsonBody,
+  rejectCrossOriginRequest,
+} from '@/lib/server/request-security';
 import { createSessionToken, SESSION_COOKIE_NAME } from '@/lib/server/session-token';
 
-function getRequestMeta(req: NextRequest) {
-  return {
-    ipAddress:
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      req.headers.get('x-real-ip') ||
-      null,
-    userAgent: req.headers.get('user-agent'),
-  };
-}
-
 export async function POST(req: NextRequest) {
+  const originError = rejectCrossOriginRequest(req);
+  if (originError) return originError;
+
   if (!isAuthEnabled()) {
     return apiSuccess({ authenticated: false, authEnabled: false });
   }
   if (!isDatabaseConfigured()) {
     return apiError('INTERNAL_ERROR', 503, 'Database is not configured');
   }
-  if (!process.env.SESSION_SECRET && !process.env.ACCESS_CODE) {
-    return apiError('INTERNAL_ERROR', 500, 'SESSION_SECRET is required');
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+    return apiError('INTERNAL_ERROR', 500, 'SESSION_SECRET is not configured securely');
   }
 
-  let body: { email?: string; password?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return apiError('INVALID_REQUEST', 400, 'Invalid JSON body');
-  }
+  const parsedBody = await readJsonBody<{ identifier?: string; password?: string }>(req);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.value;
 
-  const email = body.email?.trim().toLowerCase();
+  const rawIdentifier = body.identifier?.trim() || '';
+  const identifier = normalizeLoginIdentifier(rawIdentifier);
   const password = body.password || '';
   const meta = getRequestMeta(req);
 
-  if (!email || !password) {
-    return apiError('INVALID_REQUEST', 400, 'Email and password are required');
+  if (!rawIdentifier || !password || password.length > PASSWORD_MAX_LENGTH) {
+    return apiError('INVALID_REQUEST', 400, '请输入手机号/邮箱和密码');
   }
 
-  const failedAttempts = await countRecentFailedLoginAttempts({
-    email,
+  const attemptIdentifier = identifier?.value || rawIdentifier.toLowerCase().slice(0, 254);
+  const failedAttempts = await countRecentFailedAuthAttempts({
+    kind: 'login',
+    identifier: attemptIdentifier,
     ipAddress: meta.ipAddress,
   });
-  if (failedAttempts >= 10) {
-    await recordLoginAttempt({ email, success: false, failureReason: 'rate_limited', ...meta });
-    return apiError('RATE_LIMITED', 429, 'Too many login attempts. Try again later.');
-  }
-
-  const user = await findUserByEmail(email);
-  const passwordOk = user ? await verifyPassword(password, user.passwordHash) : false;
-  if (!user || !passwordOk) {
-    await recordLoginAttempt({
-      email,
+  if (failedAttempts.matched >= 10 || failedAttempts.global >= 1000) {
+    await recordAuthAttempt({
+      kind: 'login',
+      identifier: attemptIdentifier,
       success: false,
-      failureReason: 'invalid_credentials',
+      failureReason: 'rate_limited',
       ...meta,
     });
-    return apiError('INVALID_REQUEST', 401, 'Invalid email or password');
+    return apiError('RATE_LIMITED', 429, '登录尝试过多，请稍后再试');
   }
 
-  if (user.status !== 'active') {
-    await recordLoginAttempt({ email, success: false, failureReason: 'disabled_user', ...meta });
-    return apiError('INVALID_REQUEST', 403, 'User is disabled');
+  const user = identifier ? await findUserByIdentifier(identifier.value) : null;
+  const passwordOk = await verifyPassword(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
+  if (!user || !passwordOk || user.status !== 'active') {
+    await recordAuthAttempt({
+      kind: 'login',
+      identifier: attemptIdentifier,
+      success: false,
+      failureReason: user?.status === 'disabled' ? 'disabled_user' : 'invalid_credentials',
+      ...meta,
+    });
+    return apiError('INVALID_REQUEST', 401, '手机号/邮箱或密码错误');
   }
 
   const session = await createSession({ userId: user.id, ...meta });
   await markUserLogin(user.id);
-  await recordLoginAttempt({ email, success: true, ...meta });
+  await recordAuthAttempt({
+    kind: 'login',
+    identifier: user.loginIdentifier,
+    success: true,
+    ...meta,
+  });
   await writeAuditLog({
     actorUserId: user.id,
     action: 'auth.login',
@@ -89,8 +95,6 @@ export async function POST(req: NextRequest) {
 
   const token = createSessionToken({
     sid: session.id,
-    uid: user.id,
-    role: user.role,
     exp: Math.floor(session.expiresAt.getTime() / 1000),
   });
   const cookieStore = await cookies();
@@ -100,7 +104,10 @@ export async function POST(req: NextRequest) {
     authenticated: true,
     user: {
       id: user.id,
+      identifier: user.loginIdentifier,
+      identifierType: user.identifierType,
       email: user.email,
+      phone: user.phone,
       displayName: user.displayName,
       role: user.role,
     },

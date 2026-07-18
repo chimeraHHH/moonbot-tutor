@@ -2,12 +2,13 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import type { SessionClaims } from '@/lib/server/auth-types';
 
 export const SESSION_COOKIE_NAME = 'sophos_session';
-export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24;
+export const SESSION_IDLE_TIMEOUT_SECONDS = 60 * 60 * 8;
 
 function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || process.env.ACCESS_CODE;
-  if (!secret) {
-    throw new Error('SESSION_SECRET is required when auth is enabled');
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error('SESSION_SECRET must contain at least 32 characters when auth is enabled');
   }
   return secret;
 }
@@ -22,7 +23,9 @@ export function createSessionToken(claims: SessionClaims): string {
 }
 
 export function verifySessionToken(token: string): SessionClaims | null {
-  const [payload, signature] = token.split('.');
+  const segments = token.split('.');
+  if (segments.length !== 2 || token.length > 1024) return null;
+  const [payload, signature] = segments;
   if (!payload || !signature) return null;
 
   const expected = signPayload(payload);
@@ -37,7 +40,7 @@ export function verifySessionToken(token: string): SessionClaims | null {
 
   try {
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as SessionClaims;
-    if (!claims.sid || !claims.uid || !claims.role || !claims.exp) return null;
+    if (!claims.sid || !/^[0-9a-f-]{36}$/i.test(claims.sid) || !claims.exp) return null;
     if (claims.exp * 1000 <= Date.now()) return null;
     return claims;
   } catch {

@@ -2,12 +2,13 @@ import { randomUUID } from 'crypto';
 import { query, queryOne } from '@/lib/server/db';
 import { hashPassword } from '@/lib/server/password';
 import type { AuthUser, UserRole, UserStatus } from '@/lib/server/auth-types';
-import { normalizeEmail } from '@/lib/server/auth-types';
-import { SESSION_MAX_AGE_SECONDS } from '@/lib/server/session-token';
+import { SESSION_IDLE_TIMEOUT_SECONDS, SESSION_MAX_AGE_SECONDS } from '@/lib/server/session-token';
 
 interface UserRow {
   id: string;
-  email: string;
+  login_identifier: string;
+  email: string | null;
+  phone: string | null;
   display_name: string;
   role: UserRole;
   status: UserStatus;
@@ -27,7 +28,10 @@ export interface UserWithPassword extends AuthUser {
 function mapUser(row: UserRow): AuthUser {
   return {
     id: row.id,
+    loginIdentifier: row.login_identifier,
+    identifierType: row.email ? 'email' : 'phone',
     email: row.email,
+    phone: row.phone,
     displayName: row.display_name,
     role: row.role,
     status: row.status,
@@ -44,19 +48,21 @@ function mapUserWithPassword(row: UserWithPasswordRow): UserWithPassword {
   };
 }
 
-export async function findUserByEmail(email: string): Promise<UserWithPassword | null> {
+export async function findUserByIdentifier(identifier: string): Promise<UserWithPassword | null> {
   const row = await queryOne<UserWithPasswordRow>(
-    `SELECT id, email, password_hash, display_name, role, status, created_at, updated_at, last_login_at
+    `SELECT id, login_identifier, email, phone, password_hash, display_name, role, status,
+            created_at, updated_at, last_login_at
        FROM users
-      WHERE email = $1`,
-    [normalizeEmail(email)],
+      WHERE login_identifier = $1`,
+    [identifier],
   );
   return row ? mapUserWithPassword(row) : null;
 }
 
 export async function findUserById(userId: string): Promise<AuthUser | null> {
   const row = await queryOne<UserRow>(
-    `SELECT id, email, display_name, role, status, created_at, updated_at, last_login_at
+    `SELECT id, login_identifier, email, phone, display_name, role, status,
+            created_at, updated_at, last_login_at
        FROM users
       WHERE id = $1`,
     [userId],
@@ -64,17 +70,25 @@ export async function findUserById(userId: string): Promise<AuthUser | null> {
   return row ? mapUser(row) : null;
 }
 
-export async function listUsers(): Promise<AuthUser[]> {
+export async function listUsers(input?: { query?: string; limit?: number }): Promise<AuthUser[]> {
+  const search = input?.query?.trim() || '';
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
   const rows = await query<UserRow>(
-    `SELECT id, email, display_name, role, status, created_at, updated_at, last_login_at
+    `SELECT id, login_identifier, email, phone, display_name, role, status,
+            created_at, updated_at, last_login_at
        FROM users
-      ORDER BY created_at DESC`,
+      WHERE ($1 = '' OR login_identifier ILIKE '%' || $1 || '%' OR display_name ILIKE '%' || $1 || '%')
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [search, limit],
   );
   return rows.map(mapUser);
 }
 
 export async function createUser(input: {
-  email: string;
+  identifier: string;
+  email: string | null;
+  phone: string | null;
   password: string;
   displayName: string;
   role: UserRole;
@@ -82,14 +96,19 @@ export async function createUser(input: {
 }): Promise<AuthUser> {
   const passwordHash = await hashPassword(input.password);
   const row = await queryOne<UserRow>(
-    `INSERT INTO users (id, email, password_hash, display_name, role, status)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, display_name, role, status, created_at, updated_at, last_login_at`,
+    `INSERT INTO users (
+       id, login_identifier, email, phone, password_hash, display_name, role, status
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, login_identifier, email, phone, display_name, role, status,
+               created_at, updated_at, last_login_at`,
     [
       randomUUID(),
-      normalizeEmail(input.email),
+      input.identifier,
+      input.email,
+      input.phone,
       passwordHash,
-      input.displayName.trim() || normalizeEmail(input.email),
+      input.displayName,
       input.role,
       input.status ?? 'active',
     ],
@@ -105,6 +124,7 @@ export async function updateUser(
     role: UserRole;
     status: UserStatus;
     password: string;
+    revokeSessions: boolean;
   }>,
 ): Promise<AuthUser> {
   const updates: string[] = [];
@@ -128,12 +148,29 @@ export async function updateUser(
 
   setColumn('updated_at', new Date());
   params.push(userId);
+  const userIdParam = params.length;
+  params.push(patch.revokeSessions === true);
+  const revokeSessionsParam = params.length;
 
   const row = await queryOne<UserRow>(
-    `UPDATE users
-        SET ${updates.join(', ')}
-      WHERE id = $${params.length}
-      RETURNING id, email, display_name, role, status, created_at, updated_at, last_login_at`,
+    `WITH updated_user AS (
+       UPDATE users
+          SET ${updates.join(', ')}
+        WHERE id = $${userIdParam}
+        RETURNING id, login_identifier, email, phone, display_name, role, status,
+                  created_at, updated_at, last_login_at
+     ), revoked_sessions AS (
+       UPDATE sessions
+          SET revoked_at = now()
+        WHERE user_id = $${userIdParam}
+          AND $${revokeSessionsParam}::boolean
+          AND revoked_at IS NULL
+          AND EXISTS (SELECT 1 FROM updated_user)
+        RETURNING id
+     )
+     SELECT updated_user.*,
+            (SELECT count(*) FROM revoked_sessions) AS revoked_session_count
+       FROM updated_user`,
     params,
   );
   if (!row) throw new Error('User not found');
@@ -154,26 +191,46 @@ export async function createSession(input: {
     [id, input.userId, expiresAt, input.ipAddress ?? null, input.userAgent ?? null],
   );
 
+  await query(
+    `UPDATE sessions
+        SET revoked_at = now()
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND id NOT IN (
+          SELECT id
+            FROM sessions
+           WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+           ORDER BY created_at DESC
+           LIMIT 10
+        )`,
+    [input.userId],
+  );
+
+  await query(
+    `DELETE FROM sessions
+      WHERE (expires_at < now() - interval '30 days')
+         OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '30 days')`,
+  );
+
   return { id, expiresAt };
 }
 
-export async function touchAndReadSession(input: {
-  sessionId: string;
-  userId: string;
-}): Promise<AuthUser | null> {
-  const row = await queryOne<{ id: string }>(
-    `UPDATE sessions
+export async function touchAndReadSession(input: { sessionId: string }): Promise<AuthUser | null> {
+  const row = await queryOne<UserRow>(
+    `UPDATE sessions AS s
         SET last_seen_at = now()
-      WHERE id = $1
-        AND user_id = $2
-        AND revoked_at IS NULL
-        AND expires_at > now()
-      RETURNING id`,
-    [input.sessionId, input.userId],
+       FROM users AS u
+      WHERE s.id = $1
+        AND s.user_id = u.id
+        AND s.revoked_at IS NULL
+        AND s.expires_at > now()
+        AND s.last_seen_at > now() - ($2::int * interval '1 second')
+        AND u.status = 'active'
+      RETURNING u.id, u.login_identifier, u.email, u.phone, u.display_name, u.role,
+                u.status, u.created_at, u.updated_at, u.last_login_at`,
+    [input.sessionId, SESSION_IDLE_TIMEOUT_SECONDS],
   );
-  if (!row) return null;
-  const user = await findUserById(input.userId);
-  return user?.status === 'active' ? user : null;
+  return row ? mapUser(row) : null;
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {
@@ -182,43 +239,90 @@ export async function revokeSession(sessionId: string): Promise<void> {
   ]);
 }
 
+export async function revokeSessionsForUser(userId: string): Promise<void> {
+  await query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [
+    userId,
+  ]);
+}
+
 export async function markUserLogin(userId: string): Promise<void> {
   await query(`UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1`, [userId]);
 }
 
-export async function recordLoginAttempt(input: {
-  email: string;
+export type AuthAttemptKind = 'login' | 'register';
+
+export async function recordAuthAttempt(input: {
+  kind: AuthAttemptKind;
+  identifier: string;
   success: boolean;
   failureReason?: string;
   ipAddress?: string | null;
   userAgent?: string | null;
 }): Promise<void> {
   await query(
-    `INSERT INTO login_attempts (email, success, failure_reason, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO auth_attempts (kind, identifier, success, failure_reason, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
-      normalizeEmail(input.email),
+      input.kind,
+      input.identifier,
       input.success,
       input.failureReason ?? null,
       input.ipAddress ?? null,
       input.userAgent ?? null,
     ],
   );
+
+  if (input.success) {
+    await query(
+      `DELETE FROM auth_attempts
+        WHERE kind = $1 AND identifier = $2 AND success = false AND created_at > now() - interval '1 day'`,
+      [input.kind, input.identifier],
+    );
+  }
 }
 
-export async function countRecentFailedLoginAttempts(input: {
-  email: string;
+export async function countRecentFailedAuthAttempts(input: {
+  kind: AuthAttemptKind;
+  identifier: string;
   ipAddress?: string | null;
-}): Promise<number> {
-  const row = await queryOne<{ count: string }>(
-    `SELECT count(*)::text
-       FROM login_attempts
+}): Promise<{ matched: number; global: number }> {
+  const row = await queryOne<{ matched: string; global: string }>(
+    `SELECT
+       count(*) FILTER (
+         WHERE identifier = $2 OR ($3::text IS NOT NULL AND ip_address = $3)
+       )::text AS matched,
+       count(*)::text AS global
+       FROM auth_attempts
       WHERE success = false
-        AND created_at > now() - interval '15 minutes'
-        AND (email = $1 OR ($2::text IS NOT NULL AND ip_address = $2))`,
-    [normalizeEmail(input.email), input.ipAddress ?? null],
+        AND kind = $1
+        AND created_at > now() - interval '15 minutes'`,
+    [input.kind, input.identifier, input.ipAddress ?? null],
   );
-  return Number(row?.count ?? 0);
+  return {
+    matched: Number(row?.matched ?? 0),
+    global: Number(row?.global ?? 0),
+  };
+}
+
+export async function countRecentRegistrationAttempts(input: {
+  ipAddress?: string | null;
+}): Promise<{ fromIp: number; global: number }> {
+  const row = await queryOne<{ from_ip: string; global: string }>(
+    `SELECT
+       count(*) FILTER (
+         WHERE $1::text IS NOT NULL
+           AND ip_address = $1
+           AND created_at > now() - interval '15 minutes'
+       )::text AS from_ip,
+       count(*) FILTER (WHERE created_at > now() - interval '1 hour')::text AS global
+     FROM auth_attempts
+     WHERE kind = 'register'`,
+    [input.ipAddress ?? null],
+  );
+  return {
+    fromIp: Number(row?.from_ip ?? 0),
+    global: Number(row?.global ?? 0),
+  };
 }
 
 export async function writeAuditLog(input: {

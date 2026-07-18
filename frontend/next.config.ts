@@ -30,15 +30,27 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-DNS-Prefetch-Control', value: 'off' },
           // X-Frame-Options only supports SAMEORIGIN (no allow-list),
           // so we omit it when custom ancestors are configured.
           ...(!extraAncestors ? [{ key: 'X-Frame-Options', value: 'SAMEORIGIN' }] : []),
           {
             key: 'Content-Security-Policy',
-            value: `frame-ancestors ${frameAncestors}`,
+            value: `frame-ancestors ${frameAncestors}; base-uri 'self'; object-src 'none'`,
           },
         ],
       },
+      ...['/login', '/register', '/admin', '/api/auth/:path*', '/api/admin/:path*'].map(
+        (source) => ({
+          source,
+          headers: [
+            { key: 'Cache-Control', value: 'no-store, max-age=0' },
+            { key: 'Pragma', value: 'no-cache' },
+          ],
+        }),
+      ),
     ];
   },
 };

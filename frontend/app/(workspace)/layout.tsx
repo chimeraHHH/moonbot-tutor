@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { WorkspaceShell } from '@/components/workspace/workspace-shell';
+import { isAuthEnabled, requireCurrentUser } from '@/lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 
-export default function WorkspaceLayout({ children }: { children: ReactNode }) {
+export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
+  if (isAuthEnabled()) await requireCurrentUser();
   return <WorkspaceShell>{children}</WorkspaceShell>;
 }

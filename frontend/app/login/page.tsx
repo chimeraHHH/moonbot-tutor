@@ -7,11 +7,12 @@ import { LockKeyhole, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getSafeReturnPath } from '@/lib/auth/validation';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,15 +26,15 @@ function LoginForm() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.error || '登录失败');
       }
 
-      const next = searchParams.get('next');
-      router.replace(next && next.startsWith('/') ? next : '/student');
+      const fallback = data.user?.role === 'admin' ? '/admin' : '/student';
+      router.replace(getSafeReturnPath(searchParams.get('next'), fallback));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');
@@ -54,9 +55,7 @@ function LoginForm() {
           </div>
           <div className="max-w-xl pb-12">
             <p className="text-sm font-medium text-muted-foreground">AI 沉浸式学生课堂</p>
-            <h1 className="mt-4 text-5xl font-semibold tracking-normal">
-              登录你的学习空间
-            </h1>
+            <h1 className="mt-4 text-5xl font-semibold tracking-normal">登录你的学习空间</h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
               在一个教师的引导下，生成并探索属于你的可视化课程。
             </p>
@@ -76,18 +75,18 @@ function LoginForm() {
                 <LockKeyhole className="size-5" />
               </div>
               <h2 className="text-2xl font-semibold tracking-normal">登录</h2>
-              <p className="mt-2 text-sm text-muted-foreground">使用你的星燧学生账号。</p>
+              <p className="mt-2 text-sm text-muted-foreground">使用手机号或邮箱登录星燧。</p>
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
+                <Label htmlFor="identifier">手机号或邮箱</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
                   required
                 />
               </div>

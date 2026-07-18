@@ -13,7 +13,10 @@ export async function GET() {
     user: user
       ? {
           id: user.id,
+          identifier: user.loginIdentifier,
+          identifierType: user.identifierType,
           email: user.email,
+          phone: user.phone,
           displayName: user.displayName,
           role: user.role,
           status: user.status,
