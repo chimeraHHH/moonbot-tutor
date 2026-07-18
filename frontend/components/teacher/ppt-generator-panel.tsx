@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { createLogger } from '@/lib/logger';
 import { saveAsset, updateAsset } from '@/lib/teacher/history';
+import { toProgressPercent } from '@/lib/teacher/progress';
 import type { TeacherAsset } from '@/lib/teacher/types';
 
 const log = createLogger('PptGeneratorPanel');
@@ -39,7 +40,6 @@ interface SubmitResponse {
   status?: string;
   step?: string;
   message?: string;
-  pollUrl?: string;
   error?: string;
   details?: string;
 }
@@ -300,7 +300,7 @@ export function PptGeneratorPanel() {
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div
                 className="h-full bg-violet-500 transition-all"
-                style={{ width: `${Math.min(100, Math.round(job.progress * 100))}%` }}
+                style={{ width: `${toProgressPercent(job.progress)}%` }}
               />
             </div>
           )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-type Role = 'student' | 'teacher' | 'parent' | 'admin';
+type Role = 'student' | 'admin';
 type Status = 'active' | 'disabled';
 
 interface AdminUser {
@@ -78,12 +78,10 @@ interface AuditEvent {
   actorIdentifier: string | null;
 }
 
-const ROLE_OPTIONS: Role[] = ['student', 'teacher', 'parent', 'admin'];
+const ROLE_OPTIONS: Role[] = ['student', 'admin'];
 const STATUS_OPTIONS: Status[] = ['active', 'disabled'];
 const ROLE_LABELS: Record<Role, string> = {
   student: '学生',
-  teacher: '教师',
-  parent: '家长',
   admin: '管理员',
 };
 const STATUS_LABELS: Record<Status, string> = { active: '正常', disabled: '已停用' };
@@ -127,7 +125,7 @@ export function AdminDashboard({
     );
   }, [search, users]);
 
-  async function readJson(response: Response) {
+  const readJson = useCallback(async (response: Response) => {
     const data = await response.json();
     if (response.status === 401) {
       router.replace('/login?next=/admin');
@@ -135,9 +133,9 @@ export function AdminDashboard({
     }
     if (!response.ok || !data.success) throw new Error(data.error || '请求失败');
     return data;
-  }
+  }, [router]);
 
-  async function loadAdminData() {
+  const loadAdminData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -155,11 +153,11 @@ export function AdminDashboard({
     } finally {
       setLoading(false);
     }
-  }
+  }, [readJson]);
 
   useEffect(() => {
     void loadAdminData();
-  }, []);
+  }, [loadAdminData]);
 
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

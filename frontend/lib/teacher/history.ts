@@ -1,7 +1,7 @@
 import type { TeacherAsset } from './types';
 
-const STORAGE_KEY = 'openmaic:teacher:assets';
-const CHANGE_EVENT = 'openmaic:teacher:assets:change';
+const STORAGE_KEY = 'sophos:teacher:assets:v1';
+const CHANGE_EVENT = 'sophos:teacher:assets:change';
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
