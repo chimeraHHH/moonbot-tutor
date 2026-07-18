@@ -13,6 +13,8 @@ describe('LandingPage', () => {
   it('renders the four sections and student entry routes', () => {
     const html = renderToStaticMarkup(createElement(LandingPage));
     expect(html).toContain('星燧计划');
+    expect(html).toContain('aria-label="Sophos">Sophos</div>');
+    expect(html).toContain('href="/student">进入星燧</a>');
     expect(html).toContain('id="homeView"');
     expect(html).toContain('id="aerospaceView"');
     expect(html).toContain('id="pricingView"');

@@ -60,10 +60,11 @@ export function LandingPage() {
   return (
     <main ref={rootRef} className="landing-page min-h-screen bg-[#050711] text-[#fff4dc]">
       <section id="zhixiangView" data-landing-section className="zhixiang-view landing-reveal" aria-label="星燧计划封面">
+        <div className="landing-brand" aria-label="Sophos">Sophos</div>
         <div className="zhixiang-center">
           <p className="zhixiang-title">星燧计划</p>
           <h1 className="zhixiang-sub">为人类生一簇篝火</h1>
-          <button onClick={scrollToSolar} className="enter-btn" type="button">进入星燧</button>
+          <Link href="/student" className="enter-btn">进入星燧</Link>
           <button onClick={scrollToSolar} className="scroll-cue" type="button" aria-label="向下浏览">
             <span>向下探索</span><i aria-hidden="true" />
           </button>
