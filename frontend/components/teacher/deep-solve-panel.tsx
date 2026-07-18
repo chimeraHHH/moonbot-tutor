@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { createLogger } from '@/lib/logger';
-import { saveAsset, updateAsset } from '@/lib/teacher/history';
+import { loadAssets, saveAsset, updateAsset } from '@/lib/teacher/history';
 import { toProgressPercent } from '@/lib/teacher/progress';
 import type { TeacherAsset } from '@/lib/teacher/types';
 
@@ -55,24 +55,35 @@ export function DeepSolvePanel() {
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<JobState | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollSequenceRef = useRef(0);
 
   const clearPoll = useCallback(() => {
+    pollSequenceRef.current += 1;
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, []);
 
-  useEffect(() => () => clearPoll(), [clearPoll]);
+  const startPoll = useCallback(() => {
+    clearPoll();
+    return pollSequenceRef.current;
+  }, [clearPoll]);
 
   const pollOnce = useCallback(
-    async (taskId: string, assetId: string, taskAccessToken: string) => {
+    async (
+      taskId: string,
+      assetId: string,
+      taskAccessToken: string,
+      pollSequence: number,
+    ) => {
       try {
         const query = new URLSearchParams({ accessToken: taskAccessToken });
         const res = await fetch(`/api/teacher/deep-solve/tasks/${taskId}?${query}`, {
           cache: 'no-store',
         });
         const data = (await res.json()) as StatusResponse;
+        if (pollSequenceRef.current !== pollSequence) return;
         if (!res.ok || !data.success) {
           const err = data.details || data.error || `HTTP ${res.status}`;
           setJob((prev) =>
@@ -80,7 +91,11 @@ export function DeepSolvePanel() {
               ? { ...prev, done: true, error: err, state: 'failed' }
               : prev,
           );
-          updateAsset(assetId, { status: 'error', error: err });
+          updateAsset(assetId, {
+            status: 'error',
+            error: err,
+            ref: { taskAccessToken: undefined },
+          });
           toast.error(t('teacher.deepSolve.error.pollFailed'));
           return;
         }
@@ -99,29 +114,60 @@ export function DeepSolvePanel() {
         );
         if (data.done) {
           if (data.state === 'succeeded') {
-            updateAsset(assetId, { status: 'ready' });
+            updateAsset(assetId, {
+              status: 'ready',
+              ref: { taskAccessToken: undefined },
+            });
           } else {
             updateAsset(assetId, {
               status: 'error',
               error: data.error || `Task ${data.state}`,
+              ref: { taskAccessToken: undefined },
             });
           }
           return;
         }
         pollTimerRef.current = setTimeout(
-          () => pollOnce(taskId, assetId, taskAccessToken),
+          () => pollOnce(taskId, assetId, taskAccessToken, pollSequence),
           POLL_INTERVAL_MS,
         );
       } catch (err) {
+        if (pollSequenceRef.current !== pollSequence) return;
         log.error('poll failed:', err);
         pollTimerRef.current = setTimeout(
-          () => pollOnce(taskId, assetId, taskAccessToken),
+          () => pollOnce(taskId, assetId, taskAccessToken, pollSequence),
           POLL_INTERVAL_MS,
         );
       }
     },
     [t],
   );
+
+  useEffect(() => {
+    const runningAsset = loadAssets().find(
+      (asset) =>
+        asset.type === 'manim-video' &&
+        asset.status === 'running' &&
+        asset.ref.taskId &&
+        asset.ref.taskAccessToken,
+    );
+    if (runningAsset?.ref.taskId && runningAsset.ref.taskAccessToken) {
+      setJob({
+        taskId: runningAsset.ref.taskId,
+        assetId: runningAsset.id,
+        state: 'queued',
+        done: false,
+      });
+      const pollSequence = startPoll();
+      void pollOnce(
+        runningAsset.ref.taskId,
+        runningAsset.id,
+        runningAsset.ref.taskAccessToken,
+        pollSequence,
+      );
+    }
+    return clearPoll;
+  }, [clearPoll, pollOnce, startPoll]);
 
   const handleSubmit = async () => {
     const q = question.trim();
@@ -161,11 +207,12 @@ export function DeepSolvePanel() {
         status: 'running',
         createdAt: now,
         updatedAt: now,
-        ref: { taskId: data.taskId },
+        ref: { taskId: data.taskId, taskAccessToken: data.taskAccessToken },
       };
       saveAsset(asset);
       setJob({ taskId: data.taskId, assetId, state: 'queued', done: false });
-      pollOnce(data.taskId, assetId, data.taskAccessToken);
+      const pollSequence = startPoll();
+      void pollOnce(data.taskId, assetId, data.taskAccessToken, pollSequence);
     } catch (err) {
       log.error('submit failed:', err);
       toast.error(t('teacher.deepSolve.error.submitFailed'));

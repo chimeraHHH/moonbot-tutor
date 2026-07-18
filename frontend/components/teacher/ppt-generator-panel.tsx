@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { createLogger } from '@/lib/logger';
-import { saveAsset, updateAsset } from '@/lib/teacher/history';
+import { loadAssets, saveAsset, updateAsset } from '@/lib/teacher/history';
 import { toProgressPercent } from '@/lib/teacher/progress';
 import type { TeacherAsset } from '@/lib/teacher/types';
 
@@ -72,21 +72,27 @@ export function PptGeneratorPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<JobState | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollSequenceRef = useRef(0);
 
   const clearPoll = useCallback(() => {
+    pollSequenceRef.current += 1;
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, []);
 
-  useEffect(() => () => clearPoll(), [clearPoll]);
+  const startPoll = useCallback(() => {
+    clearPoll();
+    return pollSequenceRef.current;
+  }, [clearPoll]);
 
   const pollOnce = useCallback(
-    async (jobId: string, assetId: string) => {
+    async (jobId: string, assetId: string, pollSequence: number) => {
       try {
         const res = await fetch(`/api/generate-classroom/${jobId}`, { cache: 'no-store' });
         const data = (await res.json()) as PollResponse;
+        if (pollSequenceRef.current !== pollSequence) return;
         if (!res.ok || !data.success) {
           const err = data.details || data.error || `HTTP ${res.status}`;
           setJob((prev) =>
@@ -128,14 +134,39 @@ export function PptGeneratorPanel() {
           }
           return;
         }
-        pollTimerRef.current = setTimeout(() => pollOnce(jobId, assetId), POLL_INTERVAL_MS);
+        pollTimerRef.current = setTimeout(
+          () => pollOnce(jobId, assetId, pollSequence),
+          POLL_INTERVAL_MS,
+        );
       } catch (err) {
+        if (pollSequenceRef.current !== pollSequence) return;
         log.error('poll failed:', err);
-        pollTimerRef.current = setTimeout(() => pollOnce(jobId, assetId), POLL_INTERVAL_MS);
+        pollTimerRef.current = setTimeout(
+          () => pollOnce(jobId, assetId, pollSequence),
+          POLL_INTERVAL_MS,
+        );
       }
     },
     [t],
   );
+
+  useEffect(() => {
+    const runningAsset = loadAssets().find(
+      (asset) =>
+        asset.type === 'classroom-ppt' && asset.status === 'running' && asset.ref.jobId,
+    );
+    if (runningAsset?.ref.jobId) {
+      setJob({
+        jobId: runningAsset.ref.jobId,
+        assetId: runningAsset.id,
+        status: 'queued',
+        done: false,
+      });
+      const pollSequence = startPoll();
+      void pollOnce(runningAsset.ref.jobId, runningAsset.id, pollSequence);
+    }
+    return clearPoll;
+  }, [clearPoll, pollOnce, startPoll]);
 
   const buildRequirement = () => {
     const parts = [
@@ -195,7 +226,8 @@ export function PptGeneratorPanel() {
         message: data.message,
         done: false,
       });
-      pollOnce(data.jobId, assetId);
+      const pollSequence = startPoll();
+      void pollOnce(data.jobId, assetId, pollSequence);
     } catch (err) {
       log.error('submit failed:', err);
       toast.error(t('teacher.ppt.error.submitFailed'));
