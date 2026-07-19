@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { AgentConfig } from './types';
 import { getActionsForRole } from './types';
 import type { TTSProviderId } from '@/lib/audio/types';
@@ -13,6 +13,7 @@ import { USER_AVATAR } from '@/lib/types/roundtable';
 import type { Participant, ParticipantRole } from '@/lib/types/roundtable';
 import { useUserProfileStore } from '@/lib/store/user-profile';
 import type { AgentInfo } from '@/lib/generation/pipeline-types';
+import { scopedLocalStorage, subscribeClientStorageScope } from '@/lib/client-storage/scope';
 
 interface AgentRegistryState {
   agents: Record<string, AgentConfig>; // Map of agentId -> config
@@ -24,6 +25,13 @@ interface AgentRegistryState {
   getAgent: (id: string) => AgentConfig | undefined;
   listAgents: () => AgentConfig[];
 }
+
+const agentRegistryStorage = createJSONStorage<unknown>(() => scopedLocalStorage);
+const discardAgentRegistryStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
 
 // Action types available to agents
 const WHITEBOARD_ACTIONS = [
@@ -236,6 +244,8 @@ export const useAgentRegistry = create<AgentRegistryState>()(
     {
       name: 'agent-registry-storage',
       version: 11, // Bumped: add voiceOverrides field to AgentConfig
+      storage: agentRegistryStorage,
+      skipHydration: true,
       migrate: (persistedState: unknown) => persistedState,
       // Merge persisted state with default agents
       // Default agents always use code-defined values (not cached)
@@ -262,6 +272,17 @@ export const useAgentRegistry = create<AgentRegistryState>()(
     },
   ),
 );
+
+export function resetAndRehydrateAgentRegistry(): Promise<void> | void {
+  useAgentRegistry.persist.setOptions({ storage: discardAgentRegistryStorage });
+  useAgentRegistry.setState(useAgentRegistry.getInitialState(), true);
+  useAgentRegistry.persist.setOptions({ storage: agentRegistryStorage });
+  return useAgentRegistry.persist.rehydrate();
+}
+
+subscribeClientStorageScope(() => void resetAndRehydrateAgentRegistry(), {
+  emitCurrent: true,
+});
 
 /**
  * Convert agents to roundtable participants
@@ -386,11 +407,14 @@ export async function saveGeneratedAgents(
     voiceConfig?: { providerId: string; voiceId: string };
     voiceDesign?: VoiceDesign;
   }>,
+  options: { persist?: boolean } = {},
 ): Promise<string[]> {
-  const { db } = await import('@/lib/utils/database');
-
-  // Clear old generated agents for this stage
-  await db.generatedAgents.where('stageId').equals(stageId).delete();
+  const shouldPersist = options.persist !== false;
+  if (shouldPersist) {
+    const { db } = await import('@/lib/utils/database');
+    // Clear old generated agents for this stage
+    await db.generatedAgents.where('stageId').equals(stageId).delete();
+  }
 
   // Clear from registry
   const registry = useAgentRegistry.getState();
@@ -398,9 +422,11 @@ export async function saveGeneratedAgents(
     if (agent.isGenerated) registry.deleteAgent(agent.id);
   }
 
-  // Write to IndexedDB
   const records = agents.map((a) => ({ ...a, stageId, createdAt: Date.now() }));
-  await db.generatedAgents.bulkPut(records);
+  if (shouldPersist) {
+    const { db } = await import('@/lib/utils/database');
+    await db.generatedAgents.bulkPut(records);
+  }
 
   // Add to registry
   for (const record of records) {
@@ -428,9 +454,11 @@ export async function saveGeneratedAgents(
   // spoken line is already stable. Same idempotent ensure as the TTS path;
   // fire-and-forget. Dynamic import keeps this client-only dep out of the
   // server-importable store module.
-  void import('@/lib/audio/agent-voice')
-    .then((m) => m.warmUpAgentVoices(registry.listAgents().filter((a) => a.isGenerated)))
-    .catch(() => undefined);
+  if (shouldPersist) {
+    void import('@/lib/audio/agent-voice')
+      .then((m) => m.warmUpAgentVoices(registry.listAgents().filter((a) => a.isGenerated)))
+      .catch(() => undefined);
+  }
 
   return records.map((r) => r.id);
 }

@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { GraduationCap, LogOut, Presentation, Shield } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { UserRole } from '@/lib/server/auth-types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { broadcastAuthIdentityChange } from '@/lib/client-storage/auth-identity-sync';
 
 interface RoleItem {
   href: string;
@@ -32,14 +33,16 @@ const ROLES: RoleItem[] = [
 
 export function RoleSidebar({ currentUserRole }: { currentUserRole?: UserRole }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { t } = useI18n();
   const visibleRoles = ROLES.filter((item) => !item.adminOnly || currentUserRole === 'admin');
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-    router.refresh();
+    const response = await fetch('/api/auth/logout', { method: 'POST' });
+    if (!response.ok) return;
+    broadcastAuthIdentityChange();
+    // A hard navigation destroys every account-scoped in-memory singleton;
+    // the next page cannot continue using the previous user's Dexie instance.
+    window.location.replace('/login');
   }
 
   return (

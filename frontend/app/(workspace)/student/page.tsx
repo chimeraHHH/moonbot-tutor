@@ -54,6 +54,7 @@ import { useImportClassroom } from '@/lib/import/use-import-classroom';
 import { shouldShowVocationalTestUi } from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { resolveStudentPreset } from '@/lib/presets/student-presets';
+import { scopedLocalStorage, scopedSessionStorage } from '@/lib/client-storage/scope';
 
 const log = createLogger('Home');
 
@@ -105,7 +106,7 @@ function HomePage() {
   const persistRecentOpen = (next: boolean) => {
     setRecentOpen(next);
     try {
-      localStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
+      scopedLocalStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
     } catch {
       /* ignore */
     }
@@ -115,14 +116,14 @@ function HomePage() {
   /* eslint-disable react-hooks/set-state-in-effect -- Hydration from localStorage must happen in effect */
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(RECENT_OPEN_STORAGE_KEY);
+      const saved = scopedLocalStorage.getItem(RECENT_OPEN_STORAGE_KEY);
       if (saved !== null) setRecentOpen(saved !== 'false');
     } catch {
       /* localStorage unavailable */
     }
     try {
-      const savedWebSearch = localStorage.getItem(WEB_SEARCH_STORAGE_KEY);
-      const savedInteractiveMode = localStorage.getItem(INTERACTIVE_MODE_STORAGE_KEY);
+      const savedWebSearch = scopedLocalStorage.getItem(WEB_SEARCH_STORAGE_KEY);
+      const savedInteractiveMode = scopedLocalStorage.getItem(INTERACTIVE_MODE_STORAGE_KEY);
       const updates: Partial<FormState> = {};
       if (savedWebSearch === 'true') updates.webSearch = true;
       if (savedInteractiveMode === 'true') updates.interactiveMode = true;
@@ -252,9 +253,11 @@ function HomePage() {
   const updateForm = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     try {
-      if (field === 'webSearch') localStorage.setItem(WEB_SEARCH_STORAGE_KEY, String(value));
+      if (field === 'webSearch') {
+        scopedLocalStorage.setItem(WEB_SEARCH_STORAGE_KEY, String(value));
+      }
       if (field === 'interactiveMode')
-        localStorage.setItem(INTERACTIVE_MODE_STORAGE_KEY, String(value));
+        scopedLocalStorage.setItem(INTERACTIVE_MODE_STORAGE_KEY, String(value));
       if (field === 'requirement') updateRequirementCache(value as string);
     } catch {
       /* ignore */
@@ -324,7 +327,7 @@ function HomePage() {
         sceneOutlines: null,
         currentStep: 'generating' as const,
       };
-      sessionStorage.setItem('generationSession', JSON.stringify(sessionState));
+      scopedSessionStorage.setItem('generationSession', JSON.stringify(sessionState));
 
       router.push('/generation-preview');
     } catch (err) {
@@ -473,7 +476,10 @@ function HomePage() {
               <button
                 onClick={() => handleGenerate()}
                 disabled={!canGenerate}
-                className={cn('s-btn-send shrink-0 h-8 flex items-center justify-center gap-1.5 transition-all px-4', !canGenerate && 'cursor-not-allowed')}
+                className={cn(
+                  's-btn-send shrink-0 h-8 flex items-center justify-center gap-1.5 transition-all px-4',
+                  !canGenerate && 'cursor-not-allowed',
+                )}
               >
                 <span className="text-xs font-medium">{t('toolbar.enterClassroom')}</span>
                 <ArrowUp className="size-3.5" />
@@ -756,7 +762,6 @@ function HomePage() {
           </AnimatePresence>
         </motion.div>
       )}
-
     </div>
   );
 }

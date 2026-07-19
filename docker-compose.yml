@@ -19,6 +19,9 @@ services:
     build: ./services/code2video
     container_name: moonbot-tutor-code2video
     restart: unless-stopped
+    volumes:
+      - moonbot-code2video-cases:/app/CASES
+      - moonbot-code2video-tts:/app/src/tts_static
     expose:
       - "8010"
     environment:
@@ -33,3 +36,9 @@ services:
       C2V_SHIM_UPSTREAM: ${ANTHROPIC_BASE_URL:-https://byteswarm.ai/claude/v1}/messages
       # Manim narration TTS via Doubao (Volcengine seed-tts-2.0).
       C2V_TTS_DOUBAO_KEY: ${TTS_DOUBAO_API_KEY}
+
+volumes:
+  moonbot-code2video-cases:
+    name: moonbot-code2video-cases
+  moonbot-code2video-tts:
+    name: moonbot-code2video-tts

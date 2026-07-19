@@ -21,6 +21,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q services/code2video/src services/code2video/prompts
 
+      - name: Validate deployment persistence contract
+        run: bash scripts/check-deployment-persistence.sh
+
   test:
     name: Build & test (NestJS)
     runs-on: ubuntu-latest
@@ -177,6 +180,11 @@ jobs:
           [ "${#AUTH_SESSION_SECRET}" -ge 32 ] || { echo "FATAL: AUTH_SESSION_SECRET is too short"; exit 1; }
           [ "${#AUTH_ADMIN_PASSWORD}" -ge 12 ] || { echo "FATAL: AUTH_ADMIN_PASSWORD is too short"; exit 1; }
           case "$AUTH_DB_PASSWORD" in *[!A-Za-z0-9_-]*) echo "FATAL: AUTH_DB_PASSWORD must be URL-safe"; exit 1;; esac
+          case "$AUTH_PUBLIC_URL" in
+            https://*) AUTH_COOKIE_SECURE_VALUE=true;;
+            http://*) AUTH_COOKIE_SECURE_VALUE=false;;
+            *) echo "FATAL: AUTH_PUBLIC_URL must use http or https"; exit 1;;
+          esac
 
           # Keep PostgreSQL private on moonbot-net with a named volume. The
           # image is resolved before any existing production container stops.
@@ -217,15 +225,120 @@ jobs:
           docker build --progress=plain -t moonbot-frontend:ci moonbot-frontend-src
           echo "::endgroup::"
 
+          # Runtime-created classrooms/jobs/media and Deep Solve outputs must
+          # survive replacement of the release containers. Until the live
+          # container is itself mounted to the canonical named volume, sync its
+          # writable layer on every attempt. This also covers a previous deploy
+          # that seeded the volume but rolled back before promotion.
+          LEGACY_VOLUMES_TO_RESYNC=""
+
+          copy_container_path_to_volume() {
+            source_container="$1"
+            source_path="$2"
+            volume_name="$3"
+            helper_image="$4"
+            (
+              set -o pipefail
+              docker cp "$source_container:$source_path/." - \
+                | docker run --rm -i -v "$volume_name:/target" "$helper_image" tar -C /target -xf -
+            )
+          }
+
+          clear_named_volume_contents() {
+            volume_name="$1"
+            helper_image="$2"
+            # /target is the exact named volume mount in a disposable helper.
+            # Preserve only our readiness marker; the authoritative source
+            # remains recoverable in its old container until promotion passes.
+            docker run --rm -v "$volume_name:/target" "$helper_image" \
+              sh -c 'find /target -mindepth 1 -maxdepth 1 ! -name .moonbot-volume-ready -exec rm -rf -- {} +'
+          }
+
+          seed_named_volume() {
+            volume_name="$1"
+            source_container="$2"
+            source_path="$3"
+            helper_image="$4"
+
+            docker volume create "$volume_name" >/dev/null
+            if ! docker inspect "$source_container" >/dev/null 2>&1; then
+              echo "No prior $source_container container; initializing empty $volume_name"
+              return
+            fi
+            if docker inspect -f '{{range .Mounts}}{{println .Name .Destination}}{{end}}' "$source_container" \
+              | grep -Fqx "$volume_name $source_path"; then
+              echo "$source_container already uses canonical volume $volume_name"
+              return
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' "$source_container")" != "true" ]; then
+              echo "FATAL: cannot safely migrate $source_container:$source_path while the legacy container is stopped"
+              exit 1
+            fi
+            if ! docker exec "$source_container" test -d "$source_path"; then
+              echo "No legacy data at $source_container:$source_path; initializing empty $volume_name"
+              clear_named_volume_contents "$volume_name" "$helper_image" || exit 1
+              return
+            fi
+
+            echo "Syncing legacy data from $source_container:$source_path into $volume_name"
+            clear_named_volume_contents "$volume_name" "$helper_image"
+            copy_container_path_to_volume "$source_container" "$source_path" "$volume_name" "$helper_image"
+            LEGACY_VOLUMES_TO_RESYNC="$LEGACY_VOLUMES_TO_RESYNC $volume_name"
+          }
+
+          resync_named_volume_after_stop() {
+            volume_name="$1"
+            source_container="$2"
+            source_path="$3"
+            helper_image="$4"
+            case " $LEGACY_VOLUMES_TO_RESYNC " in
+              *" $volume_name "*) ;;
+              *) return;;
+            esac
+            source_running="$(docker inspect -f '{{.State.Running}}' "$source_container")" \
+              || return 1
+            if [ "$source_running" = "true" ]; then
+              echo "FATAL: refusing final legacy sync while $source_container is still running"
+              return 1
+            fi
+            echo "Final sync after stopping $source_container"
+            clear_named_volume_contents "$volume_name" "$helper_image" || return 1
+            copy_container_path_to_volume \
+              "$source_container" "$source_path" "$volume_name" "$helper_image" || return 1
+          }
+
+          initialize_named_volume() {
+            volume_name="$1"
+            helper_image="$2"
+            docker run --rm -v "$volume_name:/target" "$helper_image" \
+              sh -c 'touch /target/.moonbot-volume-ready && test -w /target'
+          }
+
+          seed_named_volume moonbot-frontend-data moonbot-frontend /app/data moonbot-frontend:ci
+          seed_named_volume moonbot-code2video-cases moonbot-code2video /app/CASES moonbot-code2video:ci
+          seed_named_volume moonbot-code2video-tts moonbot-code2video /app/src/tts_static moonbot-code2video:ci
+          initialize_named_volume moonbot-frontend-data moonbot-frontend:ci
+          initialize_named_volume moonbot-code2video-cases moonbot-code2video:ci
+          initialize_named_volume moonbot-code2video-tts moonbot-code2video:ci
+
           # Apply immutable migrations, create the initial administrator once,
           # then prove the release can reach PostgreSQL and authenticate it.
+          backfill_classroom_records() {
+            docker run --rm --network moonbot-net \
+              -v moonbot-frontend-data:/app/data \
+              -e DATABASE_URL="$AUTH_DATABASE_URL" \
+              moonbot-frontend:ci node scripts/backfill-classroom-records.mjs
+          }
+
           docker run --rm --network moonbot-net \
+            -v moonbot-frontend-data:/app/data \
             -e DATABASE_URL="$AUTH_DATABASE_URL" \
             -e ADMIN_IDENTIFIER="$AUTH_ADMIN_IDENTIFIER" \
             -e ADMIN_PASSWORD="$AUTH_ADMIN_PASSWORD" \
             -e ADMIN_NAME="星燧管理员" \
             moonbot-frontend:ci \
             sh -c 'node scripts/migrate-db.mjs && node scripts/create-admin-user.mjs'
+          backfill_classroom_records
 
           # Exercise the real login path with a one-time administrator instead
           # of depending on the bootstrap administrator's password forever.
@@ -253,12 +366,13 @@ jobs:
 
           docker rm -f moonbot-frontend-candidate 2>/dev/null || true
           docker run -d --name moonbot-frontend-candidate --restart no --network moonbot-net \
+            -v moonbot-frontend-data:/app/data \
             -e PORT=3000 \
             -e AUTH_ENABLED=true \
             -e DATABASE_URL="$AUTH_DATABASE_URL" \
             -e SESSION_SECRET="$AUTH_SESSION_SECRET" \
             -e AUTH_PUBLIC_URL="$AUTH_PUBLIC_URL" \
-            -e AUTH_COOKIE_SECURE=false \
+            -e AUTH_COOKIE_SECURE="$AUTH_COOKIE_SECURE_VALUE" \
             moonbot-frontend:ci >/dev/null
 
           frontend_abort() {
@@ -311,6 +425,8 @@ jobs:
           # so the live container serves traffic until every gate passes.
           docker rm -f moonbot-code2video-candidate 2>/dev/null || true
           docker run -d --name moonbot-code2video-candidate --restart no --network moonbot-net \
+            -v moonbot-code2video-cases:/app/CASES \
+            -v moonbot-code2video-tts:/app/src/tts_static \
             -e PORT=8010 \
             -e C2V_LLM_PROVIDER="$C2V_LLM_PROVIDER" \
             -e C2V_LLM_API_KEY="$C2V_LLM_API_KEY" \
@@ -354,8 +470,18 @@ jobs:
 
           # All gates passed — promote candidate, retire the old container.
           echo "candidate passed all gates; promoting"
-          docker stop moonbot-code2video 2>/dev/null || true
-          docker rename moonbot-code2video "moonbot-code2video-old-$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+          if docker inspect moonbot-code2video >/dev/null 2>&1; then
+            docker stop moonbot-code2video >/dev/null
+            if ! resync_named_volume_after_stop moonbot-code2video-cases moonbot-code2video /app/CASES moonbot-code2video:ci; then
+              docker start moonbot-code2video >/dev/null
+              c2v_abort "final migration of legacy CASES output failed"
+            fi
+            if ! resync_named_volume_after_stop moonbot-code2video-tts moonbot-code2video /app/src/tts_static moonbot-code2video:ci; then
+              docker start moonbot-code2video >/dev/null
+              c2v_abort "final migration of legacy TTS output failed"
+            fi
+            docker rename moonbot-code2video "moonbot-code2video-old-$(date -u +%Y%m%dT%H%M%SZ)"
+          fi
           docker rename moonbot-code2video-candidate moonbot-code2video
           docker update --restart unless-stopped moonbot-code2video >/dev/null
           docker restart moonbot-code2video
@@ -368,17 +494,31 @@ jobs:
             moonbot-backend:ci
 
           FRONTEND_OLD="moonbot-frontend-old-$(date -u +%Y%m%dT%H%M%SZ)"
+          FRONTEND_PUBLISH="-p 8089:3000"
+          [ "$AUTH_COOKIE_SECURE_VALUE" = "false" ] \
+            || FRONTEND_PUBLISH="-p 127.0.0.1:8089:3000"
           if docker inspect moonbot-frontend >/dev/null 2>&1; then
             docker stop moonbot-frontend >/dev/null
+            if ! resync_named_volume_after_stop moonbot-frontend-data moonbot-frontend /app/data moonbot-frontend:ci; then
+              docker start moonbot-frontend >/dev/null
+              echo "FATAL: final migration of legacy frontend data failed; previous frontend restored"
+              exit 1
+            fi
+            if ! backfill_classroom_records; then
+              docker start moonbot-frontend >/dev/null
+              echo "FATAL: final legacy classroom indexing failed; previous frontend restored"
+              exit 1
+            fi
             docker rename moonbot-frontend "$FRONTEND_OLD"
           fi
-          if ! docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net -p 8089:3000 \
+          if ! docker run -d --name moonbot-frontend --restart unless-stopped --network moonbot-net $FRONTEND_PUBLISH \
+            -v moonbot-frontend-data:/app/data \
             -e PORT=3000 \
             -e AUTH_ENABLED=true \
             -e DATABASE_URL="$AUTH_DATABASE_URL" \
             -e SESSION_SECRET="$AUTH_SESSION_SECRET" \
             -e AUTH_PUBLIC_URL="$AUTH_PUBLIC_URL" \
-            -e AUTH_COOKIE_SECURE=false \
+            -e AUTH_COOKIE_SECURE="$AUTH_COOKIE_SECURE_VALUE" \
             -e ALLOW_LOCAL_NETWORKS=true \
             -e DEFAULT_MODEL="$DEFAULT_MODEL" \
             -e MODEL_ROUTES="$MODEL_ROUTES" \
@@ -421,6 +561,21 @@ jobs:
             exit 1
           fi
           docker rm -f "$FRONTEND_OLD" 2>/dev/null || true
+
+          assert_named_volume_mount() {
+            container_name="$1"
+            volume_name="$2"
+            destination="$3"
+            docker inspect -f '{{range .Mounts}}{{println .Name .Destination}}{{end}}' "$container_name" \
+              | grep -Fqx "$volume_name $destination" \
+              || { echo "FATAL: $container_name is missing $volume_name at $destination"; exit 1; }
+          }
+          assert_named_volume_mount moonbot-frontend moonbot-frontend-data /app/data
+          assert_named_volume_mount moonbot-code2video moonbot-code2video-cases /app/CASES
+          assert_named_volume_mount moonbot-code2video moonbot-code2video-tts /app/src/tts_static
+          docker exec moonbot-frontend test -f /app/data/.moonbot-volume-ready
+          docker exec moonbot-code2video test -f /app/CASES/.moonbot-volume-ready
+          docker exec moonbot-code2video test -f /app/src/tts_static/.moonbot-volume-ready
 
           docker ps --filter name=moonbot --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
           REMOTE_SCRIPT

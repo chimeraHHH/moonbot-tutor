@@ -30,6 +30,12 @@ COPY prompts/ ./prompts/
 COPY assets/ ./assets/
 COPY json_files/ ./json_files/
 
+# Deep Solve writes task bundles and rendered videos to /app/CASES, while its
+# generated TTS files are served from /app/src/tts_static. Keep both outside
+# the replaceable container layer. Production supplies explicit named volumes.
+RUN mkdir -p /app/CASES /app/src/tts_static
+VOLUME ["/app/CASES", "/app/src/tts_static"]
+
 WORKDIR /app/src
 ENV PORT=8010 \
     PYTHONPATH=/app:/app/src

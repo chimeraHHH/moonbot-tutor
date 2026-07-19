@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,9 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from '@/lib/auth/validation';
+import { broadcastAuthIdentityChange } from '@/lib/client-storage/auth-identity-sync';
 
 function RegisterForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [displayName, setDisplayName] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -40,8 +40,8 @@ function RegisterForm() {
         throw new Error(data.error || '注册失败');
       }
 
-      router.replace(getSafeReturnPath(searchParams.get('next')));
-      router.refresh();
+      broadcastAuthIdentityChange();
+      window.location.replace(getSafeReturnPath(searchParams.get('next')));
     } catch (err) {
       setError(err instanceof Error ? err.message : '注册失败');
     } finally {

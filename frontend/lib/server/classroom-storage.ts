@@ -2,7 +2,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
-import { upsertClassroomRecord } from '@/lib/server/admin-records';
+import {
+  ClassroomOwnershipConflictError,
+  findClassroomOwnershipRecord,
+  upsertClassroomRecord,
+} from '@/lib/server/admin-records';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
@@ -43,7 +47,7 @@ export interface PersistedClassroomData {
 }
 
 export function isValidClassroomId(id: string): boolean {
-  return /^[a-zA-Z0-9_-]+$/.test(id);
+  return /^[a-zA-Z0-9_-]{1,128}$/.test(id);
 }
 
 export async function readClassroom(id: string): Promise<PersistedClassroomData | null> {
@@ -68,6 +72,9 @@ export async function persistClassroom(
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
+  if (!isValidClassroomId(data.id)) {
+    throw new Error('Invalid classroom id');
+  }
   const classroomData: PersistedClassroomData = {
     id: data.id,
     stage: data.stage,
@@ -77,7 +84,20 @@ export async function persistClassroom(
 
   await ensureClassroomsDir();
   const filePath = path.join(CLASSROOMS_DIR, `${data.id}.json`);
-  await writeJsonFileAtomic(filePath, classroomData);
+  const ownershipRecord = await findClassroomOwnershipRecord(data.id);
+  try {
+    await fs.stat(filePath);
+    // A file without a database ownership row predates the authenticated
+    // storage model. Never let an ordinary save implicitly claim or overwrite
+    // it; recovery must be an explicit administrator operation.
+    if (ownershipRecord === null) {
+      throw new ClassroomOwnershipConflictError(data.id);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  // Claim/verify ownership before touching the file. Otherwise a caller could
+  // submit another user's stage id and overwrite the JSON before the DB upsert.
   await upsertClassroomRecord({
     id: data.id,
     ownerUserId: data.ownerUserId,
@@ -86,6 +106,7 @@ export async function persistClassroom(
     sceneCount: data.scenes.length,
     createdAt: classroomData.createdAt,
   });
+  await writeJsonFileAtomic(filePath, classroomData);
 
   return {
     ...classroomData,

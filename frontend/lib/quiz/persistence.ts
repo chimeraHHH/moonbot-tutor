@@ -1,4 +1,5 @@
 import type { QuestionResult } from '@/lib/quiz/grading';
+import { scopedLocalStorage } from '@/lib/client-storage/scope';
 
 /**
  * Quiz state persistence in localStorage, keyed per scene.
@@ -34,7 +35,7 @@ export type SubmittedState =
 function safeGet(key: string): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    return localStorage.getItem(key);
+    return scopedLocalStorage.getItem(key);
   } catch {
     return null;
   }
@@ -43,7 +44,7 @@ function safeGet(key: string): string | null {
 function safeSet(key: string, value: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(key, value);
+    scopedLocalStorage.setItem(key, value);
   } catch {
     // ignore quota / disabled storage
   }
@@ -52,7 +53,7 @@ function safeSet(key: string, value: string): void {
 function safeRemove(key: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(key);
+    scopedLocalStorage.removeItem(key);
   } catch {
     // ignore
   }

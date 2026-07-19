@@ -42,6 +42,7 @@ import type {
 import { applyModelMetadata, getCatalogThinkingCapability } from './model-metadata';
 import { getDefaultThinkingConfig, getThinkingMode, pickThinkingBudget } from './thinking-config';
 import { createLogger } from '@/lib/logger';
+import { scopedLocalStorage } from '@/lib/client-storage/scope';
 // NOTE: Do NOT import thinking-context.ts here — it uses node:async_hooks
 // which is server-only, and this file is also used on the client via
 // settings.ts. The thinking context is read from globalThis instead
@@ -1226,13 +1227,15 @@ function getProviderConfig(providerId: ProviderId): ProviderConfig | null {
     return PROVIDERS[providerId];
   }
 
-  // Check unified providersConfig in localStorage (browser only)
+  // Check the active account's unified Zustand settings (browser only).
   if (typeof window !== 'undefined') {
     try {
-      const storedConfig = localStorage.getItem('providersConfig');
-      if (storedConfig) {
-        const config = JSON.parse(storedConfig);
-        const providerSettings = config[providerId];
+      const storedSettings = scopedLocalStorage.getItem('settings-storage');
+      if (storedSettings) {
+        const persisted = JSON.parse(storedSettings) as {
+          state?: { providersConfig?: Record<string, ProviderConfig> };
+        };
+        const providerSettings = persisted.state?.providersConfig?.[providerId];
         if (providerSettings) {
           return {
             id: providerId,

@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ProviderId } from '@/lib/ai/providers';
 import type { ProvidersConfig } from '@/lib/types/settings';
 import { PROVIDERS } from '@/lib/ai/providers';
@@ -28,6 +28,7 @@ import {
   resolveSelectedModel,
   isLLMProviderConfigured,
 } from '@/lib/store/settings-validation';
+import { scopedLocalStorage, subscribeClientStorageScope } from '@/lib/client-storage/scope';
 
 const log = createLogger('Settings');
 
@@ -344,6 +345,13 @@ export interface SettingsState {
   // Server provider actions
   fetchServerProviders: () => Promise<void>;
 }
+
+const settingsStorage = createJSONStorage<Partial<SettingsState>>(() => scopedLocalStorage);
+const discardSettingsStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
 
 // Initialize default providers config
 const getDefaultProvidersConfig = (): ProvidersConfig => {
@@ -742,94 +750,26 @@ function stripLegacyServerBaseUrl(state: Partial<SettingsState>): void {
   }
 }
 
-// Migrate from old localStorage format
-const migrateFromOldStorage = () => {
-  if (typeof window === 'undefined') return null;
-
-  // Check if new storage already exists
-  const newStorage = localStorage.getItem('settings-storage');
-  if (newStorage) return null; // Already migrated or new install
-
-  // Read old localStorage keys
-  const oldLlmModel = localStorage.getItem('llmModel');
-  const oldProvidersConfig = localStorage.getItem('providersConfig');
-  const oldTtsModel = localStorage.getItem('ttsModel');
-  const oldSelectedAgents = localStorage.getItem('selectedAgentIds');
-
-  if (!oldLlmModel && !oldProvidersConfig) return null; // No old data
-
-  // Parse model selection
-  let providerId: ProviderId = 'openai';
-  let modelId = 'gpt-5.4-mini';
-  if (oldLlmModel) {
-    const [pid, mid] = oldLlmModel.split(':');
-    if (pid && mid) {
-      providerId = pid as ProviderId;
-      modelId = mid;
-    }
-  }
-
-  // Parse providers config
-  let providersConfig = getDefaultProvidersConfig();
-  if (oldProvidersConfig) {
-    try {
-      const parsed = JSON.parse(oldProvidersConfig);
-      providersConfig = { ...providersConfig, ...parsed };
-    } catch (e) {
-      log.error('Failed to parse old providersConfig:', e);
-    }
-  }
-
-  // Parse other settings
-  let ttsModel = 'openai-tts';
-  if (oldTtsModel) ttsModel = oldTtsModel;
-
-  let selectedAgentIds = ['default-1', 'default-2', 'default-3'];
-  if (oldSelectedAgents) {
-    try {
-      const parsed = JSON.parse(oldSelectedAgents);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        selectedAgentIds = parsed;
-      }
-    } catch (e) {
-      log.error('Failed to parse old selectedAgentIds:', e);
-    }
-  }
-
-  return {
-    providerId,
-    modelId,
-    thinkingConfigs: {},
-    providersConfig,
-    ttsModel,
-    selectedAgentIds,
-  };
-};
-
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => {
-      // Try to migrate from old storage
-      const migratedData = migrateFromOldStorage();
       const defaultAudioConfig = getDefaultAudioConfig();
       const defaultPDFConfig = getDefaultPDFConfig();
       const defaultImageConfig = getDefaultImageConfig();
       const defaultVideoConfig = getDefaultVideoConfig();
       const defaultWebSearchConfig = getDefaultWebSearchConfig();
 
-      const initialProvidersConfig = migratedData?.providersConfig || getDefaultProvidersConfig();
+      const initialProvidersConfig = getDefaultProvidersConfig();
 
       return {
-        // Initial state (use migrated data if available)
-        providerId: migratedData?.providerId || 'openai',
-        modelId: migratedData?.modelId || '',
-        thinkingConfigs: pruneThinkingConfigs(
-          migratedData?.thinkingConfigs || {},
-          initialProvidersConfig,
-        ),
+        // Unowned legacy keys are intentionally not auto-imported. Each
+        // authenticated account starts from defaults or its own scoped state.
+        providerId: 'openai',
+        modelId: '',
+        thinkingConfigs: {},
         providersConfig: initialProvidersConfig,
-        ttsModel: migratedData?.ttsModel || 'openai-tts',
-        selectedAgentIds: migratedData?.selectedAgentIds || ['default-1', 'default-2', 'default-3'],
+        ttsModel: 'openai-tts',
+        selectedAgentIds: ['default-1', 'default-2', 'default-3'],
         agentMode: 'auto' as const,
         autoAgentCount: 3,
         agentVoiceOverrides: {},
@@ -1696,6 +1636,8 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'settings-storage',
       version: 5,
+      storage: settingsStorage,
+      skipHydration: true,
       // Migrate persisted state
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
@@ -1919,3 +1861,14 @@ export const useSettingsStore = create<SettingsState>()(
     },
   ),
 );
+
+export function resetAndRehydrateSettingsStore(): Promise<void> | void {
+  useSettingsStore.persist.setOptions({ storage: discardSettingsStorage });
+  useSettingsStore.setState(useSettingsStore.getInitialState(), true);
+  useSettingsStore.persist.setOptions({ storage: settingsStorage });
+  return useSettingsStore.persist.rehydrate();
+}
+
+subscribeClientStorageScope(() => void resetAndRehydrateSettingsStore(), {
+  emitCurrent: true,
+});

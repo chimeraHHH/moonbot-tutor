@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { scopedLocalStorage } from '@/lib/client-storage/scope';
 
 interface UseDraftCacheOptions {
   key: string;
@@ -30,7 +31,7 @@ export function useDraftCache<T>({
   useEffect(() => {
     keyRef.current = key;
     try {
-      const raw = localStorage.getItem(key);
+      const raw = scopedLocalStorage.getItem(key);
       if (raw !== null) {
         setCachedValue(JSON.parse(raw) as T);
       } else {
@@ -49,7 +50,7 @@ export function useDraftCache<T>({
     }
     if (pendingValueRef.current !== undefined) {
       try {
-        localStorage.setItem(keyRef.current, JSON.stringify(pendingValueRef.current));
+        scopedLocalStorage.setItem(keyRef.current, JSON.stringify(pendingValueRef.current));
       } catch {
         /* ignore quota errors */
       }
@@ -66,7 +67,7 @@ export function useDraftCache<T>({
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         try {
-          localStorage.setItem(keyRef.current, JSON.stringify(value));
+          scopedLocalStorage.setItem(keyRef.current, JSON.stringify(value));
         } catch {
           /* ignore quota errors */
         }
@@ -83,7 +84,7 @@ export function useDraftCache<T>({
     }
     pendingValueRef.current = undefined;
     try {
-      localStorage.removeItem(keyRef.current);
+      scopedLocalStorage.removeItem(keyRef.current);
     } catch {
       /* ignore */
     }

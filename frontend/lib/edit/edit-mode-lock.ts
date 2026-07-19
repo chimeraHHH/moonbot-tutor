@@ -21,6 +21,8 @@
  * exceeded.
  */
 
+import { scopedLocalStorage } from '@/lib/client-storage/scope';
+
 const KEY_PREFIX = 'maic-editor:edit-lock';
 export const LOCK_HEARTBEAT_MS = 5_000;
 export const LOCK_STALE_MS = LOCK_HEARTBEAT_MS * 3;
@@ -36,7 +38,7 @@ export function editLockKey(courseId: string): string {
 
 export function readEditLock(courseId: string): EditLockState | null {
   try {
-    const raw = localStorage.getItem(editLockKey(courseId));
+    const raw = scopedLocalStorage.getItem(editLockKey(courseId));
     if (raw === null) return null;
     const parsed = JSON.parse(raw) as EditLockState;
     if (typeof parsed?.tabId !== 'string' || typeof parsed?.timestamp !== 'number') {
@@ -50,7 +52,7 @@ export function readEditLock(courseId: string): EditLockState | null {
 
 function writeEditLock(courseId: string, state: EditLockState): void {
   try {
-    localStorage.setItem(editLockKey(courseId), JSON.stringify(state));
+    scopedLocalStorage.setItem(editLockKey(courseId), JSON.stringify(state));
   } catch {
     // Quota / disabled — caller falls back to single-tab semantics.
   }
@@ -106,7 +108,7 @@ export function releaseEditLock(courseId: string, ownTabId: string): void {
   try {
     const state = readEditLock(courseId);
     if (state === null || state.tabId !== ownTabId) return;
-    localStorage.removeItem(editLockKey(courseId));
+    scopedLocalStorage.removeItem(editLockKey(courseId));
   } catch {
     // ignore
   }

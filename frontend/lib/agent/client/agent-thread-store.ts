@@ -13,6 +13,7 @@ import { nanoid } from 'nanoid';
 import { db } from '@/lib/utils/database';
 import { MAX_SESSIONS_PER_STAGE, type AgentEditSessionRecord } from './agent-edit-session-types';
 import type { SerializedMessage } from './serialize-thread';
+import { scopedLocalStorage } from '@/lib/client-storage/scope';
 
 const LEGACY_KEY = 'maic-agent-threads';
 const ACTIVE_KEY = 'maic-agent-active-session';
@@ -27,10 +28,10 @@ const ACTIVE_KEY = 'maic-agent-active-session';
  */
 export function rememberActiveSession(stageId: string, id: string): void {
   try {
-    const raw = localStorage.getItem(ACTIVE_KEY);
+    const raw = scopedLocalStorage.getItem(ACTIVE_KEY);
     const map = raw ? JSON.parse(raw) : {};
     map[stageId] = id;
-    localStorage.setItem(ACTIVE_KEY, JSON.stringify(map));
+    scopedLocalStorage.setItem(ACTIVE_KEY, JSON.stringify(map));
   } catch {
     /* best-effort */
   }
@@ -38,7 +39,7 @@ export function rememberActiveSession(stageId: string, id: string): void {
 
 export function recallActiveSession(stageId: string): string | undefined {
   try {
-    const raw = localStorage.getItem(ACTIVE_KEY);
+    const raw = scopedLocalStorage.getItem(ACTIVE_KEY);
     if (!raw) return undefined;
     const map = JSON.parse(raw);
     return typeof map?.[stageId] === 'string' ? map[stageId] : undefined;
@@ -123,7 +124,7 @@ export async function migrateLegacyThread(
 ): Promise<AgentEditSessionRecord | undefined> {
   let parsed: { state?: { threads?: Record<string, LegacyThread> } } | null = null;
   try {
-    const raw = localStorage.getItem(LEGACY_KEY);
+    const raw = scopedLocalStorage.getItem(LEGACY_KEY);
     if (!raw) return undefined;
     parsed = JSON.parse(raw);
   } catch {
@@ -151,8 +152,8 @@ export async function migrateLegacyThread(
   // Drop only this stage's legacy entry; keep the rest for their own migration.
   try {
     delete threads![stageId];
-    if (Object.keys(threads!).length === 0) localStorage.removeItem(LEGACY_KEY);
-    else localStorage.setItem(LEGACY_KEY, JSON.stringify(parsed));
+    if (Object.keys(threads!).length === 0) scopedLocalStorage.removeItem(LEGACY_KEY);
+    else scopedLocalStorage.setItem(LEGACY_KEY, JSON.stringify(parsed));
   } catch {
     /* best-effort */
   }

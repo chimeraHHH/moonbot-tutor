@@ -18,6 +18,7 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { clearDatabase } from '@/lib/utils/database';
 import { toast } from 'sonner';
 import { createLogger } from '@/lib/logger';
+import { clearCurrentAccountBrowserStorage } from '@/lib/client-storage/scope';
 
 const log = createLogger('GeneralSettings');
 
@@ -38,10 +39,9 @@ export function GeneralSettings() {
     try {
       // 1. Clear IndexedDB
       await clearDatabase();
-      // 2. Clear localStorage
-      localStorage.clear();
-      // 3. Clear sessionStorage
-      sessionStorage.clear();
+      // 2. Clear only this account's local/session keys. Theme, locale,
+      // auth-identity epoch and every other account partition must survive.
+      clearCurrentAccountBrowserStorage();
 
       toast.success(t('settings.clearCacheSuccess'));
 

@@ -19,6 +19,7 @@ import {
 import { createLogger } from '@/lib/logger';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { migrateScene } from '@/lib/edit/slide-schema';
+import type { ClientStoragePersistenceMode } from '@/lib/client-storage/scope';
 
 const log = createLogger('StageStore');
 
@@ -67,6 +68,7 @@ function mergeSceneContentForUpdate(
 }
 
 interface StageState {
+  persistenceMode: ClientStoragePersistenceMode;
   // Stage info
   stage: Stage | null;
 
@@ -130,6 +132,7 @@ interface StageState {
   getSceneIndex: (sceneId: string) => number;
 
   // Storage
+  setPersistenceMode: (mode: ClientStoragePersistenceMode) => void;
   saveToStorage: () => Promise<boolean>;
   loadFromStorage: (stageId: string) => Promise<void>;
   clearStore: () => void;
@@ -150,8 +153,11 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   generationStatus: 'idle' as const,
   currentGeneratingOrder: -1,
   failedOutlines: [],
+  persistenceMode: 'account',
 
   // Actions
+  setPersistenceMode: (persistenceMode) => set({ persistenceMode }),
+
   setStage: (stage) => {
     set((s) => ({
       stage,
@@ -307,6 +313,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
 
   setOutlines: (outlines) => {
     set({ outlines });
+    if (get().persistenceMode !== 'account') return;
     // Persist outlines to IndexedDB. Carry generationComplete so writing
     // outlines never clobbers a previously-recorded completion flag.
     const stageId = get().stage?.id;
@@ -326,6 +333,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
 
   setGenerationComplete: (generationComplete) => {
     set({ generationComplete });
+    if (get().persistenceMode !== 'account') return;
     // Persist alongside the outlines record so resume-on-mount can read it.
     const stageId = get().stage?.id;
     if (stageId) {
@@ -402,7 +410,8 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   // durability (e.g. setGenerationComplete) can avoid recording state that
   // outruns the scene data.
   saveToStorage: async () => {
-    const { stage, scenes, currentSceneId, chats } = get();
+    const { stage, scenes, currentSceneId, chats, persistenceMode } = get();
+    if (persistenceMode !== 'account') return false;
     if (!stage?.id) {
       log.warn('Cannot save: stage.id is required');
       return false;
@@ -425,6 +434,10 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   },
 
   loadFromStorage: async (stageId: string) => {
+    if (get().persistenceMode !== 'account') {
+      log.warn('IndexedDB load blocked for memory-only classroom:', stageId);
+      return;
+    }
     try {
       // Skip IndexedDB load if the store already has this stage with scenes
       // (e.g. navigated from generation-preview with fresh in-memory data)
@@ -549,7 +562,8 @@ const debouncedSave = debounce(() => {
  * advances (setCurrentSceneId etc.) never churn the registry mid-playback.
  */
 const debouncedSaveAgents = debounce(async () => {
-  const { stage } = useStageStore.getState();
+  const { stage, persistenceMode } = useStageStore.getState();
+  if (persistenceMode !== 'account') return;
   if (!stage?.id || !stage.generatedAgentConfigs) return;
   const { saveGeneratedAgents } = await import('@/lib/orchestration/registry/store');
   await saveGeneratedAgents(stage.id, stage.generatedAgentConfigs);
