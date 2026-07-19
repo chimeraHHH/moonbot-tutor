@@ -1,4 +1,5 @@
 import type { TeacherAsset } from './types';
+import { scopedLocalStorage, scopedStorageKey } from '@/lib/client-storage/scope';
 
 const STORAGE_KEY = 'sophos:teacher:assets:v1';
 const CHANGE_EVENT = 'sophos:teacher:assets:change';
@@ -10,7 +11,7 @@ function isBrowser(): boolean {
 export function loadAssets(): TeacherAsset[] {
   if (!isBrowser()) return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = scopedLocalStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -26,7 +27,7 @@ export function loadAssets(): TeacherAsset[] {
 function writeAssets(assets: TeacherAsset[]): void {
   if (!isBrowser()) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
+    scopedLocalStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
     /* quota / privacy mode — best effort */
@@ -71,7 +72,7 @@ export function subscribeToAssets(listener: () => void): () => void {
   if (!isBrowser()) return () => {};
   const onLocal = () => listener();
   const onStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) listener();
+    if (e.key === scopedStorageKey(STORAGE_KEY)) listener();
   };
   window.addEventListener(CHANGE_EVENT, onLocal as EventListener);
   window.addEventListener('storage', onStorage);

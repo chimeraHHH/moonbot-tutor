@@ -20,6 +20,13 @@ import type { VoiceDesign } from '@/lib/audio/voice-design';
 import type { UIMessage } from 'ai';
 import type { AgentEditSessionRecord } from '@/lib/agent/client/agent-edit-session-types';
 import { createLogger } from '@/lib/logger';
+import {
+  getClientStoragePartition,
+  isClientStoragePersistenceEnabled,
+  LEGACY_DATABASE_NAME,
+  scopedDatabaseName,
+  subscribeClientStorageScope,
+} from '@/lib/client-storage/scope';
 
 const log = createLogger('Database');
 
@@ -221,7 +228,6 @@ export function mediaFileKey(stageId: string, elementId: string): string {
 
 // ==================== Database Definition ====================
 
-const DATABASE_NAME = 'MAIC-Database';
 const _DATABASE_VERSION = 12;
 
 /**
@@ -243,8 +249,8 @@ class MAICDatabase extends Dexie {
   autoVoiceCache!: EntityTable<AutoVoiceCacheRecord, 'voiceId'>;
   agentEditSessions!: EntityTable<AgentEditSessionRecord, 'id'>;
 
-  constructor() {
-    super(DATABASE_NAME);
+  constructor(databaseName: string) {
+    super(databaseName);
 
     // Version 1: Initial schema
     this.version(1).stores({
@@ -445,8 +451,141 @@ class MAICDatabase extends Dexie {
   }
 }
 
-// Create database instance
-export const db = new MAICDatabase();
+const scopedDatabases = new Map<string, MAICDatabase>();
+const MEMORY_ONLY_TABLE_NAMES = new Set<PropertyKey>([
+  'stages',
+  'scenes',
+  'audioFiles',
+  'imageFiles',
+  'snapshots',
+  'chatSessions',
+  'playbackState',
+  'stageOutlines',
+  'mediaFiles',
+  'generatedAgents',
+  'voiceProfiles',
+  'autoVoiceCache',
+  'agentEditSessions',
+]);
+
+const memoryOnlyCollection: Record<PropertyKey, unknown> = new Proxy(
+  {},
+  {
+    get(_target, property) {
+      if (
+        property === 'where' ||
+        property === 'orderBy' ||
+        property === 'toCollection' ||
+        property === 'reverse' ||
+        property === 'filter' ||
+        property === 'equals' ||
+        property === 'below' ||
+        property === 'above' ||
+        property === 'between' ||
+        property === 'anyOf' ||
+        property === 'offset' ||
+        property === 'limit'
+      ) {
+        return () => memoryOnlyCollection;
+      }
+      if (
+        property === 'toArray' ||
+        property === 'sortBy' ||
+        property === 'keys' ||
+        property === 'primaryKeys' ||
+        property === 'bulkGet'
+      ) {
+        return async () => [];
+      }
+      if (property === 'get' || property === 'first' || property === 'last') {
+        return async () => undefined;
+      }
+      if (property === 'count') return async () => 0;
+      if (property === 'each') return async () => undefined;
+      if (
+        property === 'put' ||
+        property === 'add' ||
+        property === 'delete' ||
+        property === 'clear' ||
+        property === 'bulkPut' ||
+        property === 'bulkAdd' ||
+        property === 'bulkDelete' ||
+        property === 'update' ||
+        property === 'modify'
+      ) {
+        return async () => undefined;
+      }
+      return undefined;
+    },
+  },
+);
+
+function getMemoryOnlyDatabaseProperty(property: PropertyKey): unknown {
+  if (property === 'name') return 'MAIC-Memory-Only';
+  if (property === 'tables') return [];
+  if (MEMORY_ONLY_TABLE_NAMES.has(property)) return memoryOnlyCollection;
+  if (property === 'table') return () => memoryOnlyCollection;
+  if (property === 'open' || property === 'delete') return async () => undefined;
+  if (property === 'close') return () => undefined;
+  if (property === 'transaction') {
+    return async (...args: unknown[]) => {
+      const callback = [...args].reverse().find((arg) => typeof arg === 'function');
+      return typeof callback === 'function' ? callback() : undefined;
+    };
+  }
+  return memoryOnlyCollection[property];
+}
+
+function getScopedDatabase(): MAICDatabase {
+  const name = scopedDatabaseName();
+  let database = scopedDatabases.get(name);
+  if (!database) {
+    database = new MAICDatabase(name);
+    scopedDatabases.set(name, database);
+  }
+  return database;
+}
+
+/** Current account database name, exposed for diagnostics and isolation tests. */
+export function getActiveDatabaseName(): string {
+  return scopedDatabaseName(getClientStoragePartition());
+}
+
+/** Read-only lifecycle diagnostics used by isolation regression tests. */
+export function getClientDatabaseDiagnostics(): {
+  activeName: string;
+  residentNames: string[];
+} {
+  return {
+    activeName: getActiveDatabaseName(),
+    residentNames: [...scopedDatabases.keys()],
+  };
+}
+
+/**
+ * Stable facade used by existing storage modules. Table/method access resolves
+ * against the active account at call time, so no caller can retain the legacy
+ * fixed database merely because it imported this module before authentication.
+ */
+export const db = new Proxy({} as MAICDatabase, {
+  get(_target, property) {
+    if (!isClientStoragePersistenceEnabled()) {
+      return getMemoryOnlyDatabaseProperty(property);
+    }
+    const database = getScopedDatabase();
+    const value = Reflect.get(database, property, database) as unknown;
+    return typeof value === 'function' ? value.bind(database) : value;
+  },
+});
+
+subscribeClientStorageScope((_partition, previousPartition) => {
+  const previousName = scopedDatabaseName(previousPartition);
+  const previousDatabase = scopedDatabases.get(previousName);
+  if (previousDatabase) {
+    previousDatabase.close();
+    scopedDatabases.delete(previousName);
+  }
+});
 
 // ==================== Helper Functions ====================
 
@@ -472,8 +611,94 @@ export async function initDatabase(): Promise<void> {
  * Use with caution: deletes all data
  */
 export async function clearDatabase(): Promise<void> {
-  await db.delete();
+  const database = getScopedDatabase();
+  const name = database.name;
+  await database.delete();
+  scopedDatabases.delete(name);
   log.info('Database cleared');
+}
+
+export interface LegacyDatabaseSummary {
+  exists: boolean;
+  recordsByTable: Record<string, number>;
+}
+
+export function databaseSummaryHasRecords(summary: LegacyDatabaseSummary): boolean {
+  return Object.values(summary.recordsByTable).some((count) => count > 0);
+}
+
+/** Inspect the current account destination before offering a legacy import. */
+export async function inspectActiveDatabase(): Promise<LegacyDatabaseSummary> {
+  const database = getScopedDatabase();
+  await database.open();
+  const recordsByTable = Object.fromEntries(
+    await Promise.all(
+      database.tables.map(async (table) => [table.name, await table.count()] as const),
+    ),
+  );
+  return { exists: true, recordsByTable };
+}
+
+/** Inspect quarantined pre-account data without attaching it to any user. */
+export async function inspectLegacyDatabase(): Promise<LegacyDatabaseSummary> {
+  if (!(await Dexie.exists(LEGACY_DATABASE_NAME))) {
+    return { exists: false, recordsByTable: {} };
+  }
+
+  const legacy = new MAICDatabase(LEGACY_DATABASE_NAME);
+  try {
+    await legacy.open();
+    const recordsByTable = Object.fromEntries(
+      await Promise.all(
+        legacy.tables.map(async (table) => [table.name, await table.count()] as const),
+      ),
+    );
+    return { exists: true, recordsByTable };
+  } finally {
+    legacy.close();
+  }
+}
+
+/**
+ * Explicit, non-destructive import for legacy unowned IndexedDB data.
+ *
+ * The destination must be empty and `confirmed` must be true. The source is
+ * never deleted, allowing recovery if an import is interrupted or rejected.
+ */
+export async function importLegacyDatabase(options: {
+  confirmed: boolean;
+}): Promise<LegacyDatabaseSummary> {
+  if (!options.confirmed) throw new Error('Legacy database import requires explicit confirmation');
+  if (!(await Dexie.exists(LEGACY_DATABASE_NAME))) {
+    return { exists: false, recordsByTable: {} };
+  }
+
+  const destination = getScopedDatabase();
+  await destination.open();
+  const destinationCounts = await Promise.all(destination.tables.map((table) => table.count()));
+  if (destinationCounts.some((count) => count > 0)) {
+    throw new Error('Legacy database import requires an empty destination');
+  }
+
+  const legacy = new MAICDatabase(LEGACY_DATABASE_NAME);
+  try {
+    await legacy.open();
+    const recordsByTable: Record<string, number> = {};
+    const recordsByTableName = new Map<string, unknown[]>();
+    for (const sourceTable of legacy.tables) {
+      recordsByTableName.set(sourceTable.name, await sourceTable.toArray());
+    }
+    await destination.transaction('rw', destination.tables, async () => {
+      for (const destinationTable of destination.tables) {
+        const records = recordsByTableName.get(destinationTable.name) ?? [];
+        recordsByTable[destinationTable.name] = records.length;
+        if (records.length > 0) await destinationTable.bulkPut(records);
+      }
+    });
+    return { exists: true, recordsByTable };
+  } finally {
+    legacy.close();
+  }
 }
 
 /**

@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
     if (isAuthEnabled() && !user) {
       return apiError('INVALID_REQUEST', 401, 'Authentication required');
     }
-    if (job.ownerUserId && job.ownerUserId !== user?.id && user?.role !== 'admin') {
+    if (isAuthEnabled() && user?.role !== 'admin' && job.ownerUserId !== user?.id) {
       return apiError('INVALID_REQUEST', 404, 'Classroom generation job not found');
     }
 

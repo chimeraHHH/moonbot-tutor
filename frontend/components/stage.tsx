@@ -32,8 +32,10 @@ import { preloadEditor } from '@/lib/edit/preload-editor';
  */
 export function Stage({
   onRetryOutline,
+  readOnly = false,
 }: {
   onRetryOutline?: (outlineId: string) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const { mode, setMode, scenes, currentSceneId, generatingOutlines, stage } = useStageStore();
   const currentScene = useStageStore((s) => s.getCurrentScene());
@@ -104,7 +106,7 @@ export function Stage({
     if (mode !== 'edit') releaseEditLock();
   }, [mode, releaseEditLock]);
 
-  const toggleHandler = isMaicEditorEnabled() ? handleToggleEditMode : undefined;
+  const toggleHandler = !readOnly && isMaicEditorEnabled() ? handleToggleEditMode : undefined;
 
   // Mode swap choreography — a clean opacity cross-fade. Both roots layer
   // via `absolute inset-0` so they coexist for the ~280ms window without

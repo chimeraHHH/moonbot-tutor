@@ -6,11 +6,8 @@ import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
-import { getCurrentUser } from '@/lib/server/auth';
-import {
-  readJsonBody,
-  rejectCrossOriginRequest,
-} from '@/lib/server/request-security';
+import { getCurrentUser, isAuthEnabled } from '@/lib/server/auth';
+import { readJsonBody, rejectCrossOriginRequest } from '@/lib/server/request-security';
 
 const log = createLogger('GenerateClassroom API');
 
@@ -19,6 +16,11 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   const originError = rejectCrossOriginRequest(req);
   if (originError) return originError;
+
+  const user = await getCurrentUser();
+  if (isAuthEnabled() && !user) {
+    return apiError('INVALID_REQUEST', 401, 'Authentication required');
+  }
 
   let requirementSnippet: string | undefined;
   try {
@@ -52,7 +54,6 @@ export async function POST(req: NextRequest) {
     }
 
     const baseUrl = buildRequestOrigin(req);
-    const user = await getCurrentUser();
     const jobId = nanoid(10);
     const job = await createClassroomGenerationJob(jobId, body, user?.id);
     const pollUrl = `${baseUrl}/api/generate-classroom/${jobId}`;

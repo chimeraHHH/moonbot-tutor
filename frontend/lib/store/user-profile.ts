@@ -4,7 +4,8 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { scopedLocalStorage, subscribeClientStorageScope } from '@/lib/client-storage/scope';
 
 /** Predefined avatar options */
 export const AVATAR_OPTIONS = [
@@ -27,18 +28,44 @@ export interface UserProfileState {
   setBio: (bio: string) => void;
 }
 
+const DEFAULT_USER_PROFILE = {
+  avatar: AVATAR_OPTIONS[0],
+  nickname: '',
+  bio: '',
+} as const;
+
+const userProfileStorage = createJSONStorage<UserProfileState>(() => scopedLocalStorage);
+const discardUserProfileStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
 export const useUserProfileStore = create<UserProfileState>()(
   persist(
     (set) => ({
-      avatar: AVATAR_OPTIONS[0],
-      nickname: '',
-      bio: '',
+      ...DEFAULT_USER_PROFILE,
       setAvatar: (avatar) => set({ avatar }),
       setNickname: (nickname) => set({ nickname }),
       setBio: (bio) => set({ bio }),
     }),
     {
       name: 'user-profile-storage',
+      storage: userProfileStorage,
+      // The authenticated partition is installed by the root layout. Eager
+      // hydration here would briefly load guest/previous-account data first.
+      skipHydration: true,
     },
   ),
 );
+
+export function resetAndRehydrateUserProfileStore(): Promise<void> | void {
+  useUserProfileStore.persist.setOptions({ storage: discardUserProfileStorage });
+  useUserProfileStore.setState(useUserProfileStore.getInitialState(), true);
+  useUserProfileStore.persist.setOptions({ storage: userProfileStorage });
+  return useUserProfileStore.persist.rehydrate();
+}
+
+subscribeClientStorageScope(() => void resetAndRehydrateUserProfileStore(), {
+  emitCurrent: true,
+});

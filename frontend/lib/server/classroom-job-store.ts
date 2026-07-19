@@ -96,7 +96,7 @@ function markStaleIfNeeded(job: ClassroomGenerationJob): ClassroomGenerationJob 
 }
 
 export function isValidClassroomJobId(jobId: string): boolean {
-  return /^[a-zA-Z0-9_-]+$/.test(jobId);
+  return /^[a-zA-Z0-9_-]{1,128}$/.test(jobId);
 }
 
 export async function createClassroomGenerationJob(

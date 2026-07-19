@@ -37,6 +37,7 @@ import type { Stage } from '@/lib/types/stage';
 import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
 import { AgentRevealModal } from '@/components/agent/agent-reveal-modal';
 import { createLogger } from '@/lib/logger';
+import { scopedLocalStorage, scopedSessionStorage } from '@/lib/client-storage/scope';
 import {
   type GenerationSessionState,
   ALL_STEPS,
@@ -101,7 +102,7 @@ function GenerationPreviewContent() {
 
   const persistSession = (nextSession: GenerationSessionState) => {
     setSession(nextSession);
-    sessionStorage.setItem('generationSession', JSON.stringify(nextSession));
+    scopedSessionStorage.setItem('generationSession', JSON.stringify(nextSession));
   };
 
   const clearOutlineReviewTimer = () => {
@@ -146,7 +147,7 @@ function GenerationPreviewContent() {
   useEffect(() => {
     cleanupOldImages(24).catch((e) => log.error(e));
 
-    const saved = sessionStorage.getItem('generationSession');
+    const saved = scopedSessionStorage.getItem('generationSession');
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as GenerationSessionState;
@@ -391,7 +392,7 @@ function GenerationPreviewContent() {
           pdfStorageKey: undefined, // Clear so we don't re-parse
         };
         setSession(updatedSession);
-        sessionStorage.setItem('generationSession', JSON.stringify(updatedSession));
+        scopedSessionStorage.setItem('generationSession', JSON.stringify(updatedSession));
 
         // Truncation warnings
         const warnings: string[] = [];
@@ -455,7 +456,7 @@ function GenerationPreviewContent() {
           researchSources: sources,
         };
         setSession(updatedSessionWithSearch);
-        sessionStorage.setItem('generationSession', JSON.stringify(updatedSessionWithSearch));
+        scopedSessionStorage.setItem('generationSession', JSON.stringify(updatedSessionWithSearch));
         currentSession = updatedSessionWithSearch;
         activeSteps = getActiveSteps(currentSession);
       }
@@ -651,7 +652,7 @@ function GenerationPreviewContent() {
         // safe to wipe the homepage draft cache; before this point, "back to
         // requirements" must restore the user's original input.
         try {
-          localStorage.removeItem('requirementDraft');
+          scopedLocalStorage.removeItem('requirementDraft');
         } catch {
           /* ignore */
         }
@@ -977,7 +978,7 @@ function GenerationPreviewContent() {
       store.setGeneratingOutlines(remaining);
 
       // Store generation params for classroom to continue generation
-      sessionStorage.setItem(
+      scopedSessionStorage.setItem(
         'generationParams',
         JSON.stringify({
           pdfImages: currentSession.pdfImages,
@@ -987,7 +988,7 @@ function GenerationPreviewContent() {
         }),
       );
 
-      sessionStorage.removeItem('generationSession');
+      scopedSessionStorage.removeItem('generationSession');
       await store.saveToStorage();
       router.push(`/classroom/${stage.id}`);
     } catch (err) {
@@ -997,7 +998,7 @@ function GenerationPreviewContent() {
         log.info('[GenerationPreview] Generation aborted');
         return;
       }
-      sessionStorage.removeItem('generationSession');
+      scopedSessionStorage.removeItem('generationSession');
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -1014,7 +1015,7 @@ function GenerationPreviewContent() {
     abortControllerRef.current?.abort();
     clearOutlineReviewTimer();
     outlineReviewIntentRef.current = false;
-    sessionStorage.removeItem('generationSession');
+    scopedSessionStorage.removeItem('generationSession');
     router.push('/');
   };
 
@@ -1146,12 +1147,21 @@ function GenerationPreviewContent() {
         <Card className="s-card p-8 max-w-md w-full">
           <div className="text-center space-y-4">
             <AlertCircle className="size-12 mx-auto" style={{ color: 'rgba(198,208,223,0.45)' }} />
-            <h2 className="text-xl font-semibold" style={{ color: '#fff4dc' }}>{t('generation.sessionNotFound')}</h2>
-            <p className="text-sm" style={{ color: 'rgba(198,208,223,0.65)' }}>{t('generation.sessionNotFoundDesc')}</p>
+            <h2 className="text-xl font-semibold" style={{ color: '#fff4dc' }}>
+              {t('generation.sessionNotFound')}
+            </h2>
+            <p className="text-sm" style={{ color: 'rgba(198,208,223,0.65)' }}>
+              {t('generation.sessionNotFoundDesc')}
+            </p>
             <Button
               onClick={() => router.push('/')}
               className="w-full"
-              style={{ background: 'rgba(5,7,17,0.82)', border: '1px solid rgba(255,197,90,0.5)', color: '#ffc55a', borderRadius: '8px' }}
+              style={{
+                background: 'rgba(5,7,17,0.82)',
+                border: '1px solid rgba(255,197,90,0.5)',
+                color: '#ffc55a',
+                borderRadius: '8px',
+              }}
             >
               <ArrowLeft className="size-4 mr-2" />
               {t('generation.backToHome')}
@@ -1189,7 +1199,11 @@ function GenerationPreviewContent() {
             size="sm"
             onClick={goBackToHome}
             disabled={isConfirmingOutlines}
-            style={{ color: 'rgba(198,208,223,0.7)', border: '1px solid rgba(255,197,90,0.25)', borderRadius: '999px' }}
+            style={{
+              color: 'rgba(198,208,223,0.7)',
+              border: '1px solid rgba(255,197,90,0.25)',
+              borderRadius: '999px',
+            }}
           >
             <ArrowLeft className="size-4 mr-2" />
             {t('generation.backToHome')}
@@ -1229,11 +1243,7 @@ function GenerationPreviewContent() {
               </p>
             </div>
 
-            {error && (
-              <div className="s-error mx-auto max-w-2xl px-4 py-3 text-sm">
-                {error}
-              </div>
-            )}
+            {error && <div className="s-error mx-auto max-w-2xl px-4 py-3 text-sm">{error}</div>}
 
             <OutlinesEditor
               outlines={editorOutlines}
@@ -1267,7 +1277,11 @@ function GenerationPreviewContent() {
           variant="ghost"
           size="sm"
           onClick={goBackToHome}
-          style={{ color: 'rgba(198,208,223,0.7)', border: '1px solid rgba(255,197,90,0.25)', borderRadius: '999px' }}
+          style={{
+            color: 'rgba(198,208,223,0.7)',
+            border: '1px solid rgba(255,197,90,0.25)',
+            borderRadius: '999px',
+          }}
         >
           <ArrowLeft className="size-4 mr-2" />
           {t('generation.backToHome')}
@@ -1319,8 +1333,14 @@ export default function GenerationPreviewPage() {
       fallback={
         <div className="student-page min-h-[100dvh] w-full flex items-center justify-center">
           <div className="animate-pulse space-y-4 text-center">
-            <div className="h-8 w-48 rounded mx-auto" style={{ background: 'rgba(255,197,90,0.15)' }} />
-            <div className="h-4 w-64 rounded mx-auto" style={{ background: 'rgba(255,197,90,0.1)' }} />
+            <div
+              className="h-8 w-48 rounded mx-auto"
+              style={{ background: 'rgba(255,197,90,0.15)' }}
+            />
+            <div
+              className="h-4 w-64 rounded mx-auto"
+              style={{ background: 'rgba(255,197,90,0.1)' }}
+            />
           </div>
         </div>
       }

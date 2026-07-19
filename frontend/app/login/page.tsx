@@ -2,15 +2,15 @@
 
 import { FormEvent, Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { LockKeyhole, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getSafeReturnPath } from '@/lib/auth/validation';
+import { broadcastAuthIdentityChange } from '@/lib/client-storage/auth-identity-sync';
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -33,8 +33,8 @@ function LoginForm() {
         throw new Error(data.error || '登录失败');
       }
 
-      router.replace(getSafeReturnPath(searchParams.get('next'), '/student'));
-      router.refresh();
+      broadcastAuthIdentityChange();
+      window.location.replace(getSafeReturnPath(searchParams.get('next'), '/student'));
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');
     } finally {

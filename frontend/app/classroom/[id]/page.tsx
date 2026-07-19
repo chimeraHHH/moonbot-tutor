@@ -4,8 +4,8 @@ import { Stage } from '@/components/stage';
 import { ThemeProvider } from '@/lib/hooks/use-theme';
 import { useStageStore } from '@/lib/store';
 import { loadImageMapping } from '@/lib/utils/image-storage';
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useSceneGenerator } from '@/lib/hooks/use-scene-generator';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useWhiteboardHistoryStore } from '@/lib/store/whiteboard-history';
@@ -14,13 +14,20 @@ import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { migrateScene } from '@/lib/edit/slide-schema';
 import type { Scene } from '@/lib/types/stage';
+import { scopedSessionStorage, setClientStoragePersistenceMode } from '@/lib/client-storage/scope';
+import { resetAndRehydrateSettingsStore } from '@/lib/store/settings';
+import { resetAndRehydrateUserProfileStore } from '@/lib/store/user-profile';
+import { resetAndRehydrateAgentRegistry } from '@/lib/orchestration/registry/store';
 import '@/app/student.css';
 
 const log = createLogger('Classroom');
 
-export default function ClassroomDetailPage() {
+function ClassroomDetailPageContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const classroomId = params?.id as string;
+  const shareToken = searchParams.get('shareToken')?.trim() || '';
+  const isSharedClassroom = shareToken.length > 0;
 
   const { loadFromStorage } = useStageStore();
 
@@ -28,6 +35,31 @@ export default function ClassroomDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const generationStartedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const stageStore = useStageStore.getState();
+    setClientStoragePersistenceMode(isSharedClassroom ? 'memory-only' : 'account');
+    stageStore.setPersistenceMode(isSharedClassroom ? 'memory-only' : 'account');
+
+    return () => {
+      if (isSharedClassroom) {
+        // A shared bearer may be revoked at any time. Destroy its only local
+        // copy before restoring normal account persistence.
+        useStageStore.getState().clearStore();
+        useStageStore.getState().setPersistenceMode('account');
+        setClientStoragePersistenceMode('account');
+        useMediaGenerationStore.getState().revokeObjectUrls();
+        useMediaGenerationStore.setState({ tasks: {} });
+        useWhiteboardHistoryStore.getState().clearHistory();
+        // Shared generated agents and any settings changes were memory-only.
+        // Reset synchronously, then rehydrate the authenticated account so an
+        // SPA navigation cannot carry share-derived selections or providers.
+        void resetAndRehydrateSettingsStore();
+        void resetAndRehydrateUserProfileStore();
+        void resetAndRehydrateAgentRegistry();
+      }
+    };
+  }, [isSharedClassroom]);
 
   const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
     onComplete: () => {
@@ -37,13 +69,31 @@ export default function ClassroomDetailPage() {
 
   const loadClassroom = useCallback(async () => {
     try {
-      await loadFromStorage(classroomId);
+      let inMemoryGeneratedAgentIds: string[] = [];
+      const stageStore = useStageStore.getState();
+      // A share link is server-canonical. Never let a same-id local snapshot
+      // bypass token authorization or shadow the owner's shared classroom.
+      if (isSharedClassroom) {
+        stageStore.setPersistenceMode('memory-only');
+        stageStore.clearStore();
+      } else {
+        // If this SPA previously displayed a share link, its in-memory stage is
+        // untrusted without that bearer and must not satisfy loadFromStorage's
+        // same-id fast path.
+        if (stageStore.persistenceMode === 'memory-only') stageStore.clearStore();
+        stageStore.setPersistenceMode('account');
+        await loadFromStorage(classroomId);
+      }
 
       // If IndexedDB had no data, try server-side storage (API-generated classrooms)
       if (!useStageStore.getState().stage) {
         log.info('No IndexedDB data, trying server-side storage for:', classroomId);
         try {
-          const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
+          const query = new URLSearchParams({ id: classroomId });
+          if (shareToken) query.set('shareToken', shareToken);
+          const res = await fetch(`/api/classroom?${query.toString()}`, {
+            cache: 'no-store',
+          });
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
@@ -67,24 +117,45 @@ export default function ClassroomDetailPage() {
               // Hydrate server-generated agents into IndexedDB + registry.
               // Don't set selectedAgentIds here — the general agent
               // restoration logic below (Path 2) handles it uniformly.
-              if (stage.generatedAgentConfigs?.length) {
+              if (isSharedClassroom || stage.generatedAgentConfigs?.length) {
                 const { saveGeneratedAgents } = await import('@/lib/orchestration/registry/store');
-                await saveGeneratedAgents(stage.id, stage.generatedAgentConfigs);
-                log.info('Hydrated server-generated agents for stage:', stage.id);
+                inMemoryGeneratedAgentIds = await saveGeneratedAgents(
+                  stage.id,
+                  stage.generatedAgentConfigs ?? [],
+                  { persist: !isSharedClassroom },
+                );
+                log.info(
+                  isSharedClassroom
+                    ? 'Hydrated shared agents in memory:'
+                    : 'Hydrated server-generated agents for stage:',
+                  stage.id,
+                );
               }
             }
+          } else {
+            throw new Error(
+              res.status === 401 || res.status === 404
+                ? '课堂不存在或分享链接已失效'
+                : `Failed to load classroom (${res.status})`,
+            );
           }
         } catch (fetchErr) {
           log.warn('Server-side storage fetch failed:', fetchErr);
+          throw fetchErr;
         }
       }
 
-      // Restore completed media generation tasks from IndexedDB
-      await useMediaGenerationStore.getState().restoreFromDB(classroomId);
+      // Shared classrooms are server-canonical and may never read another
+      // account's same-id media cache.
+      if (!isSharedClassroom) {
+        await useMediaGenerationStore.getState().restoreFromDB(classroomId);
+      }
       // Restore agents for this stage
       const { loadGeneratedAgentsForStage, useAgentRegistry } =
         await import('@/lib/orchestration/registry/store');
-      const generatedAgentIds = await loadGeneratedAgentsForStage(classroomId);
+      const generatedAgentIds = isSharedClassroom
+        ? inMemoryGeneratedAgentIds
+        : await loadGeneratedAgentsForStage(classroomId);
       const { useSettingsStore } = await import('@/lib/store/settings');
       const { restoreAgentSelection } =
         await import('@/lib/orchestration/registry/agent-selection');
@@ -123,7 +194,7 @@ export default function ClassroomDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [classroomId, loadFromStorage]);
+  }, [classroomId, isSharedClassroom, loadFromStorage, shareToken]);
 
   useEffect(() => {
     // Reset loading state on course switch to unmount Stage during transition,
@@ -152,6 +223,7 @@ export default function ClassroomDetailPage() {
 
   // Auto-resume generation for pending outlines
   useEffect(() => {
+    if (isSharedClassroom) return;
     if (loading || error || generationStartedRef.current) return;
 
     const state = useStageStore.getState();
@@ -168,7 +240,7 @@ export default function ClassroomDetailPage() {
       generationStartedRef.current = true;
 
       // Load generation params from sessionStorage (stored by generation-preview before navigating)
-      const genParamsStr = sessionStorage.getItem('generationParams');
+      const genParamsStr = scopedSessionStorage.getItem('generationParams');
       const params = genParamsStr ? JSON.parse(genParamsStr) : {};
 
       // Reconstruct imageMapping from IndexedDB using pdfImages storageIds
@@ -211,7 +283,7 @@ export default function ClassroomDetailPage() {
         log.warn('[Classroom] Media generation resume error:', err);
       });
     }
-  }, [loading, error, generateRemaining]);
+  }, [loading, error, generateRemaining, isSharedClassroom]);
 
   return (
     <ThemeProvider>
@@ -226,7 +298,9 @@ export default function ClassroomDetailPage() {
           ) : error ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center space-y-4">
-                <p className="mb-4" style={{ color: '#ff8080' }}>Error: {error}</p>
+                <p className="mb-4" style={{ color: '#ff8080' }}>
+                  Error: {error}
+                </p>
                 <button
                   onClick={() => {
                     setError(null);
@@ -243,12 +317,14 @@ export default function ClassroomDetailPage() {
                     fontSize: '14px',
                     transition: 'border-color 0.2s, box-shadow 0.2s',
                   }}
-                  onMouseEnter={e => {
+                  onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 16px rgba(255,197,90,0.25)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                      '0 0 16px rgba(255,197,90,0.25)';
                   }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.55)';
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor =
+                      'rgba(255,197,90,0.55)';
                     (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
                   }}
                 >
@@ -257,10 +333,18 @@ export default function ClassroomDetailPage() {
               </div>
             </div>
           ) : (
-            <Stage onRetryOutline={retrySingleOutline} />
+            <Stage onRetryOutline={retrySingleOutline} readOnly={isSharedClassroom} />
           )}
         </div>
       </MediaStageProvider>
     </ThemeProvider>
+  );
+}
+
+export default function ClassroomDetailPage() {
+  return (
+    <Suspense fallback={<div className="student-page h-screen" />}>
+      <ClassroomDetailPageContent />
+    </Suspense>
   );
 }

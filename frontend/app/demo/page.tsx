@@ -2,10 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import '@/app/student.css';
+import { scopedSessionStorage } from '@/lib/client-storage/scope';
 
 const MOCK_SESSION_PREPARING = {
   sessionId: 'demo-preparing',
-  requirements: { requirement: '请以羲和体系为主线，为学生设计一堂沉浸式中文课程，主题是太阳神话与古天文观测。' },
+  requirements: {
+    requirement: '请以羲和体系为主线，为学生设计一堂沉浸式中文课程，主题是太阳神话与古天文观测。',
+  },
   pdfText: '',
   currentStep: 'generating',
   previewPhase: 'preparing',
@@ -13,24 +16,45 @@ const MOCK_SESSION_PREPARING = {
 
 const MOCK_SESSION_OUTLINE_REVIEW = {
   sessionId: 'demo-outline-review',
-  requirements: { requirement: '请以羲和体系为主线，为学生设计一堂沉浸式中文课程，主题是太阳神话与古天文观测。' },
+  requirements: {
+    requirement: '请以羲和体系为主线，为学生设计一堂沉浸式中文课程，主题是太阳神话与古天文观测。',
+  },
   pdfText: '',
   currentStep: 'generating',
   previewPhase: 'review',
   sceneOutlines: [
-    { id: 'o1', order: 1, title: '神话导入：羲和驭日', description: '以羲和神话引入课程，介绍古人对太阳的想象与崇拜。' },
-    { id: 'o2', order: 2, title: '圭表测日：古代天文仪器', description: '讲解圭表的构造与测日原理，以及节气划分的历史背景。' },
-    { id: 'o3', order: 3, title: '节气历法与农耕文明', description: '解析二十四节气如何指导农事，以及历法对文明的深远影响。' },
-    { id: 'o4', order: 4, title: '羲和号卫星：现代太阳探测', description: '介绍羲和号卫星的科学使命与太阳探测成果，连接神话与现代航天。' },
+    {
+      id: 'o1',
+      order: 1,
+      title: '神话导入：羲和驭日',
+      description: '以羲和神话引入课程，介绍古人对太阳的想象与崇拜。',
+    },
+    {
+      id: 'o2',
+      order: 2,
+      title: '圭表测日：古代天文仪器',
+      description: '讲解圭表的构造与测日原理，以及节气划分的历史背景。',
+    },
+    {
+      id: 'o3',
+      order: 3,
+      title: '节气历法与农耕文明',
+      description: '解析二十四节气如何指导农事，以及历法对文明的深远影响。',
+    },
+    {
+      id: 'o4',
+      order: 4,
+      title: '羲和号卫星：现代太阳探测',
+      description: '介绍羲和号卫星的科学使命与太阳探测成果，连接神话与现代航天。',
+    },
   ],
 };
-
 
 export default function DemoPage() {
   const router = useRouter();
 
   const go = (session: object) => {
-    sessionStorage.setItem('generationSession', JSON.stringify(session));
+    scopedSessionStorage.setItem('generationSession', JSON.stringify(session));
     router.push('/generation-preview?demo=true');
   };
 
@@ -68,12 +92,22 @@ export default function DemoPage() {
   return (
     <div
       className="student-page"
-      style={{ minHeight: '100dvh', padding: '48px 24px', display: 'flex', justifyContent: 'center' }}
+      style={{
+        minHeight: '100dvh',
+        padding: '48px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
     >
       <div style={{ width: '100%', maxWidth: '480px' }}>
         <h1
           className="s-title"
-          style={{ fontSize: '22px', letterSpacing: '0.1em', color: '#ffc55a', marginBottom: '8px' }}
+          style={{
+            fontSize: '22px',
+            letterSpacing: '0.1em',
+            color: '#ffc55a',
+            marginBottom: '8px',
+          }}
         >
           UI 预览面板
         </h1>
@@ -96,12 +130,14 @@ export default function DemoPage() {
                 key={key}
                 style={btnStyle}
                 onClick={() => goStudent(key)}
-                onMouseEnter={e => {
+                onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,197,90,0.2)';
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                    '0 0 12px rgba(255,197,90,0.2)';
                 }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.45)';
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor =
+                    'rgba(255,197,90,0.45)';
                   (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
                 }}
               >
@@ -117,11 +153,12 @@ export default function DemoPage() {
             <button
               style={btnStyle}
               onClick={() => go(MOCK_SESSION_PREPARING)}
-              onMouseEnter={e => {
+              onMouseEnter={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,197,90,0.2)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                  '0 0 12px rgba(255,197,90,0.2)';
               }}
-              onMouseLeave={e => {
+              onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.45)';
                 (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
               }}
@@ -131,11 +168,12 @@ export default function DemoPage() {
             <button
               style={btnStyle}
               onClick={() => go(MOCK_SESSION_OUTLINE_REVIEW)}
-              onMouseEnter={e => {
+              onMouseEnter={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,197,90,0.2)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                  '0 0 12px rgba(255,197,90,0.2)';
               }}
-              onMouseLeave={e => {
+              onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.45)';
                 (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
               }}
@@ -145,14 +183,15 @@ export default function DemoPage() {
             <button
               style={{ ...btnStyle, borderColor: 'rgba(255,80,80,0.4)', color: '#ff8080' }}
               onClick={() => {
-                sessionStorage.removeItem('generationSession');
+                scopedSessionStorage.removeItem('generationSession');
                 router.push('/generation-preview');
               }}
-              onMouseEnter={e => {
+              onMouseEnter={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = '#ff5050';
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,80,80,0.2)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                  '0 0 12px rgba(255,80,80,0.2)';
               }}
-              onMouseLeave={e => {
+              onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,80,80,0.4)';
                 (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
               }}
@@ -167,11 +206,12 @@ export default function DemoPage() {
           <button
             style={btnStyle}
             onClick={() => router.push('/demo-classroom')}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               (e.currentTarget as HTMLButtonElement).style.borderColor = '#ffc55a';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,197,90,0.2)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                '0 0 12px rgba(255,197,90,0.2)';
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,197,90,0.45)';
               (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
             }}
@@ -185,11 +225,12 @@ export default function DemoPage() {
           <button
             style={{ ...btnStyle, borderColor: 'rgba(255,80,80,0.4)', color: '#ff8080' }}
             onClick={() => router.push('/classroom/demo-nonexistent-id')}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               (e.currentTarget as HTMLButtonElement).style.borderColor = '#ff5050';
-              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(255,80,80,0.2)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                '0 0 12px rgba(255,80,80,0.2)';
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,80,80,0.4)';
               (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
             }}

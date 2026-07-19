@@ -3,6 +3,12 @@ import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { CLASSROOMS_DIR, isValidClassroomId } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import {
+  authorizeClassroomAccess,
+  isSecureClassroomShareTransport,
+  readClassroomShareToken,
+  type ClassroomAccessReason,
+} from '@/lib/server/classroom-access';
 
 const log = createLogger('ClassroomMedia');
 
@@ -20,8 +26,18 @@ const MIME_TYPES: Record<string, string> = {
   '.aac': 'audio/aac',
 };
 
+export function classroomMediaCacheControl(reason: ClassroomAccessReason): string {
+  // A revoked bearer must stop working immediately. Owner/admin responses can
+  // still use a short private browser cache because their session is rechecked.
+  return reason === 'share' ? 'private, no-store' : 'private, max-age=300';
+}
+
+export function classroomMediaContentType(filePath: string): string | null {
+  return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? null;
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ classroomId: string; path: string[] }> },
 ) {
   const { classroomId, path: pathSegments } = await params;
@@ -29,6 +45,19 @@ export async function GET(
   // Validate classroomId
   if (!isValidClassroomId(classroomId)) {
     return NextResponse.json({ error: 'Invalid classroom ID' }, { status: 400 });
+  }
+
+  const shareToken = readClassroomShareToken(req, classroomId);
+  const access = await authorizeClassroomAccess({
+    classroomId,
+    shareToken,
+    secureShareTransport: isSecureClassroomShareTransport(req),
+  });
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: access.status === 401 ? 'Authentication required' : 'Not found' },
+      { status: access.status },
+    );
   }
 
   // Validate path segments — no traversal
@@ -58,8 +87,10 @@ export async function GET(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const ext = path.extname(realPath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const contentType = classroomMediaContentType(realPath);
+    if (!contentType) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     // Stream the file to avoid loading large videos into memory
     const stream = createReadStream(realPath);
@@ -79,7 +110,10 @@ export async function GET(
       headers: {
         'Content-Type': contentType,
         'Content-Length': String(stat.size),
-        'Cache-Control': 'public, max-age=86400, immutable',
+        'Cache-Control': classroomMediaCacheControl(access.reason),
+        Vary: 'Cookie, Authorization',
+        'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (error) {

@@ -36,6 +36,12 @@ COPY --from=builder /app/.next/static ./.next/static
 # immutable release image before the frontend container is promoted.
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/scripts/migrate-db.mjs ./scripts/migrate-db.mjs
+COPY --from=builder /app/scripts/backfill-classroom-records.mjs ./scripts/backfill-classroom-records.mjs
 COPY --from=builder /app/scripts/create-admin-user.mjs ./scripts/create-admin-user.mjs
+# Classroom JSON, generation-job state, and generated media all live below
+# /app/data. Production binds this path to a named volume; declaring it here
+# makes the persistence contract visible to every other container runtime too.
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
 EXPOSE 3000
 CMD ["node", "server.js"]
